@@ -117,13 +117,14 @@ When launched with `./chip8` or `./chip8 --demo`, an interactive GUI Home Screen
 | Key / Shortcut | Action | Description |
 | :--- | :--- | :--- |
 | `ESC` or `M` | **Return to Home** | Pauses gameplay and returns to the Home Page to choose another game |
-| `H` | Toggle HUD | Shows/hides on-screen overlay (ROM, speed, palette, slot, last opcode) |
-| `+` / `=` | Speed Up | Increases CPU cycles executed per frame (1..200) |
-| `-` | Speed Down | Decreases CPU cycles executed per frame |
+| `H` | Toggle HUD / Debugger | Shows/hides on-screen overlay (registers, stack, disassembler, status) |
+| `+` / `=` / `Up` | Speed Up | Increases CPU cycles executed per frame (1..100) |
+| `-` / `Down` | Speed Down | Decreases CPU cycles executed per frame |
 | `Backspace` | Reset Speed | Restores default emulation speed (10 cycles/frame, 600 Hz) |
-| `C` / `Tab` | Cycle Palette | Modern Slate (White/Black), Classic Green, Amber CRT, Cyber Neon, Pure Monochrome |
+| `C` / `Tab` | Cycle Palette | Modern Slate, Classic Green CRT, Amber Phosphor, Cyber Neon, Solarized Ochre, Monochrome GameBoy |
 | `Space` / `P` | Pause / Resume | Freezes/unfreezes CPU and timer execution |
 | `N` | Single Step | While paused, executes exactly 1 cycle and prints instruction |
+| `Ctrl+R` | Restart ROM | Resets and restarts the current ROM |
 | `F1` – `F4` | Select Slot | Selects Savestate Slot 1, 2, 3, or 4 |
 | `F5` | Quick Save | Saves state to active slot (`savestate_slotN.c8s`) |
 | `F9` | Quick Load | Restores state from active slot (`savestate_slotN.c8s`) |

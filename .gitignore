@@ -5,3 +5,4 @@
 chip8
 run_tests
 *.c8s
+chip8_config.ini

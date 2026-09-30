@@ -20,6 +20,13 @@ class Chip8{
         uint16_t get_current_opcode() const { return (memory[pc & 0xFFF] << 8) | memory[(pc + 1) & 0xFFF]; }
         uint16_t get_last_opcode() const { return last_opcode; }
         uint16_t get_last_pc() const { return last_pc; }
+        uint8_t get_v(int i) const { return (i >= 0 && i < 16) ? v[i] : 0; }
+        uint16_t get_index() const { return index; }
+        uint8_t get_sp() const { return sp; }
+        uint16_t get_stack(int i) const { return (i >= 0 && i < 16) ? stack[i] : 0; }
+        uint8_t get_delay_timer() const { return delay_timer; }
+        uint8_t get_memory(uint16_t addr) const { return memory[addr & 0xFFF]; }
+        void reset() { initialise(); }
     private:
         uint8_t memory[4096]; // Memory of 4KB
         uint8_t v[16]; // 16 registers, V0 to VF

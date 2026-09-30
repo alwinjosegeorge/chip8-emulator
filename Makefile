@@ -1,7 +1,7 @@
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -O2
 TARGET = chip8
-SOURCES = src/main.cpp src/chip8.cpp
+SOURCES = src/main.cpp src/chip8.cpp src/ui_font.cpp src/app_state.cpp src/ui_renderer.cpp
 OBJECTS = $(SOURCES:.cpp=.o)
 
 all: $(TARGET)
