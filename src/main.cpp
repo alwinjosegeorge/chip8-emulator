@@ -1,3 +1,4 @@
+#define SDL_MAIN_HANDLED
 #include "chip8.h"
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_audio.h>
@@ -17,7 +18,7 @@ const int WIDTH = 64*SCALE;
 const int HEIGHT = 32*SCALE;
 
 // Keyboard mapping
-uint8_t keymap[16] = {
+SDL_Keycode keymap[16] = {
     SDLK_x, // 0
     SDLK_1, // 1
     SDLK_2, // 2
@@ -44,8 +45,8 @@ void audio_callback(void* userdata, uint8_t* stream, int len){
     bool* beeping = (bool*) userdata;
     for(int i=0; i<samples; i++){
         if(*beeping){
-            // Generating 440Hz sqaure wave
-            int16_t value = ((sample_index++ / 100) % 2) ? 3000 : -3000;
+            // Generating 440Hz square wave at 44100Hz (period ~100 samples, flip every 50)
+            int16_t value = ((sample_index++ / 50) % 2) ? 3000 : -3000;
             audio_buffer[i] = value;
         }
         else{
@@ -64,7 +65,7 @@ void draw_graphics(SDL_Renderer* renderer, Chip8& chip8){
     for(int y=0; y<32; y++){
         for(int x=0; x<64; x++){
             if(chip8.display[x + (y*64)] == 1){
-                SDL_Rect rect = {x*SCALE, (31-y)*SCALE, SCALE, SCALE};
+                SDL_Rect rect = {x*SCALE, y*SCALE, SCALE, SCALE};
                 SDL_RenderFillRect(renderer, &rect);
             }
         }
@@ -97,6 +98,7 @@ int main(int argc, char** argv){
         std::cerr << "Usage: " << argv[0] << " <ROM file>" << std::endl;
         return 1;
     }
+    SDL_SetMainReady();
     if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0){
         std::cerr << "SDL Error: " << SDL_GetError() << std::endl;
         return 1;
