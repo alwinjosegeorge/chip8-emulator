@@ -71,8 +71,14 @@ make
 ## Usage
 
 ```bash
-# Run emulator with a ROM:
+# Run emulator with a ROM (default 10x scale):
 ./chip8 roms/Pong.ch8
+
+# Run in recording-friendly demo mode (20x scale, HUD active, 5-sec cheat-sheet):
+./chip8 roms/Pong.ch8 --demo
+
+# Run with custom window scale:
+./chip8 roms/Tetris.ch8 --scale 15
 
 # Run ROM browser (interactive menu):
 ./chip8
@@ -81,7 +87,21 @@ make
 
 # Disassemble a ROM file:
 ./chip8 --disasm roms/Pong.ch8
+
+# Run headless test with ASCII screen dump:
+./chip8 roms/tests/1-chip8-logo.ch8 --headless --cycles 1000 --dump-screen
 ```
+
+### Command-Line Flags
+
+| Flag | Argument | Description |
+| :--- | :--- | :--- |
+| `--demo` | None | Enables demo/recording mode: HUD on, 20× scale (1280×640), 5-second controls cheat-sheet |
+| `--scale` | `N` | Sets custom window scaling factor ($64N \times 32N$ pixels) |
+| `--headless` | None | Runs without SDL window/audio initialization (pure CPU emulation) |
+| `--cycles` | `N` | Number of CPU cycles to execute in headless mode (default: 1000) |
+| `--dump-screen`| None | Prints the 64×32 display buffer as ASCII text upon completion |
+| `--disasm` | None | Disassembles the specified ROM into hex addresses, opcodes, and mnemonics |
 
 ## Controls
 
@@ -90,7 +110,8 @@ make
 | Key / Shortcut | Action | Description |
 | :--- | :--- | :--- |
 | `ESC` | Quit | Closes the emulator |
-| `Up` / `+` / `=` | Speed Up | Increases CPU cycles executed per frame |
+| `H` | Toggle HUD | Shows/hides on-screen overlay (ROM, speed, palette, slot, last opcode) |
+| `Up` / `+` / `=` | Speed Up | Increases CPU cycles executed per frame (1..200) |
 | `Down` / `-` | Speed Down | Decreases CPU cycles executed per frame |
 | `Backspace` | Reset Speed | Restores default emulation speed (10 cycles/frame) |
 | `C` / `Tab` | Cycle Palette | Cycles through Classic Green, Amber CRT, Neon, and Monochrome |

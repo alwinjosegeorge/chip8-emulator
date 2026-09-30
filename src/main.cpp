@@ -13,9 +13,7 @@
 #include <cstdint>
 #include <iostream>
 
-const int SCALE = 10; // Each pixel is 10x10 screen pixels
-const int WIDTH = 64*SCALE;
-const int HEIGHT = 32*SCALE;
+const int DEFAULT_SCALE = 10;
 
 // Keyboard mapping
 SDL_Keycode keymap[16] = {
@@ -37,6 +35,7 @@ SDL_Keycode keymap[16] = {
     SDLK_v  // F
 };
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -67,9 +66,101 @@ struct App {
     int cycles_per_frame = DEFAULT_CYCLES;
     int palette = 0;
     int slot = 1;
+    int scale = DEFAULT_SCALE;
     bool paused = false;
+    bool show_hud = false;
+    bool demo_mode = false;
+    Uint32 start_time = 0;
+    std::string rom_name;
     std::string status;
 };
+
+// 3x5 font: 5 rows per glyph, 3 bits wide (bit 2=left, bit 1=mid, bit 0=right)
+const uint8_t* get_font3x5_glyph(char c){
+    static const uint8_t GLYPH_UNKNOWN[5] = {0b111, 0b101, 0b101, 0b101, 0b111};
+    static const uint8_t GLYPH_SPACE[5]   = {0, 0, 0, 0, 0};
+
+    if(c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+
+    switch(c){
+        case ' ': return GLYPH_SPACE;
+        case '0': { static const uint8_t g[5] = {0b111, 0b101, 0b101, 0b101, 0b111}; return g; }
+        case '1': { static const uint8_t g[5] = {0b010, 0b110, 0b010, 0b010, 0b111}; return g; }
+        case '2': { static const uint8_t g[5] = {0b111, 0b001, 0b111, 0b100, 0b111}; return g; }
+        case '3': { static const uint8_t g[5] = {0b111, 0b001, 0b111, 0b001, 0b111}; return g; }
+        case '4': { static const uint8_t g[5] = {0b101, 0b101, 0b111, 0b001, 0b001}; return g; }
+        case '5': { static const uint8_t g[5] = {0b111, 0b100, 0b111, 0b001, 0b111}; return g; }
+        case '6': { static const uint8_t g[5] = {0b111, 0b100, 0b111, 0b101, 0b111}; return g; }
+        case '7': { static const uint8_t g[5] = {0b111, 0b001, 0b010, 0b010, 0b010}; return g; }
+        case '8': { static const uint8_t g[5] = {0b111, 0b101, 0b111, 0b101, 0b111}; return g; }
+        case '9': { static const uint8_t g[5] = {0b111, 0b101, 0b111, 0b001, 0b111}; return g; }
+
+        case 'A': { static const uint8_t g[5] = {0b010, 0b101, 0b111, 0b101, 0b101}; return g; }
+        case 'B': { static const uint8_t g[5] = {0b110, 0b101, 0b110, 0b101, 0b110}; return g; }
+        case 'C': { static const uint8_t g[5] = {0b111, 0b100, 0b100, 0b100, 0b111}; return g; }
+        case 'D': { static const uint8_t g[5] = {0b110, 0b101, 0b101, 0b101, 0b110}; return g; }
+        case 'E': { static const uint8_t g[5] = {0b111, 0b100, 0b110, 0b100, 0b111}; return g; }
+        case 'F': { static const uint8_t g[5] = {0b111, 0b100, 0b110, 0b100, 0b100}; return g; }
+        case 'G': { static const uint8_t g[5] = {0b111, 0b100, 0b101, 0b101, 0b111}; return g; }
+        case 'H': { static const uint8_t g[5] = {0b101, 0b101, 0b111, 0b101, 0b101}; return g; }
+        case 'I': { static const uint8_t g[5] = {0b111, 0b010, 0b010, 0b010, 0b111}; return g; }
+        case 'J': { static const uint8_t g[5] = {0b001, 0b001, 0b001, 0b101, 0b010}; return g; }
+        case 'K': { static const uint8_t g[5] = {0b101, 0b110, 0b100, 0b110, 0b101}; return g; }
+        case 'L': { static const uint8_t g[5] = {0b100, 0b100, 0b100, 0b100, 0b111}; return g; }
+        case 'M': { static const uint8_t g[5] = {0b101, 0b111, 0b101, 0b101, 0b101}; return g; }
+        case 'N': { static const uint8_t g[5] = {0b110, 0b101, 0b101, 0b101, 0b101}; return g; }
+        case 'O': { static const uint8_t g[5] = {0b111, 0b101, 0b101, 0b101, 0b111}; return g; }
+        case 'P': { static const uint8_t g[5] = {0b111, 0b101, 0b111, 0b100, 0b100}; return g; }
+        case 'Q': { static const uint8_t g[5] = {0b111, 0b101, 0b101, 0b111, 0b001}; return g; }
+        case 'R': { static const uint8_t g[5] = {0b110, 0b101, 0b110, 0b101, 0b101}; return g; }
+        case 'S': { static const uint8_t g[5] = {0b111, 0b100, 0b111, 0b001, 0b111}; return g; }
+        case 'T': { static const uint8_t g[5] = {0b111, 0b010, 0b010, 0b010, 0b010}; return g; }
+        case 'U': { static const uint8_t g[5] = {0b101, 0b101, 0b101, 0b101, 0b111}; return g; }
+        case 'V': { static const uint8_t g[5] = {0b101, 0b101, 0b101, 0b101, 0b010}; return g; }
+        case 'W': { static const uint8_t g[5] = {0b101, 0b101, 0b101, 0b111, 0b101}; return g; }
+        case 'X': { static const uint8_t g[5] = {0b101, 0b101, 0b010, 0b101, 0b101}; return g; }
+        case 'Y': { static const uint8_t g[5] = {0b101, 0b101, 0b010, 0b010, 0b010}; return g; }
+        case 'Z': { static const uint8_t g[5] = {0b111, 0b001, 0b010, 0b100, 0b111}; return g; }
+
+        case ':': { static const uint8_t g[5] = {0b000, 0b010, 0b000, 0b010, 0b000}; return g; }
+        case '-': { static const uint8_t g[5] = {0b000, 0b000, 0b111, 0b000, 0b000}; return g; }
+        case '+': { static const uint8_t g[5] = {0b000, 0b010, 0b111, 0b010, 0b000}; return g; }
+        case '=': { static const uint8_t g[5] = {0b000, 0b111, 0b000, 0b111, 0b000}; return g; }
+        case '/': { static const uint8_t g[5] = {0b001, 0b001, 0b010, 0b100, 0b100}; return g; }
+        case '[': { static const uint8_t g[5] = {0b110, 0b100, 0b100, 0b100, 0b110}; return g; }
+        case ']': { static const uint8_t g[5] = {0b011, 0b001, 0b001, 0b001, 0b011}; return g; }
+        case '(': { static const uint8_t g[5] = {0b010, 0b100, 0b100, 0b100, 0b010}; return g; }
+        case ')': { static const uint8_t g[5] = {0b010, 0b001, 0b001, 0b001, 0b010}; return g; }
+        case ',': { static const uint8_t g[5] = {0b000, 0b000, 0b000, 0b010, 0b100}; return g; }
+        case '.': { static const uint8_t g[5] = {0b000, 0b000, 0b000, 0b000, 0b010}; return g; }
+        case '|': { static const uint8_t g[5] = {0b010, 0b010, 0b010, 0b010, 0b010}; return g; }
+        case '#': { static const uint8_t g[5] = {0b000, 0b101, 0b111, 0b101, 0b000}; return g; }
+        case '!': { static const uint8_t g[5] = {0b010, 0b010, 0b010, 0b000, 0b010}; return g; }
+        case '?': { static const uint8_t g[5] = {0b110, 0b001, 0b010, 0b000, 0b010}; return g; }
+        case '_': { static const uint8_t g[5] = {0b000, 0b000, 0b000, 0b000, 0b111}; return g; }
+        case '>': { static const uint8_t g[5] = {0b100, 0b010, 0b001, 0b010, 0b100}; return g; }
+        case '<': { static const uint8_t g[5] = {0b001, 0b010, 0b100, 0b010, 0b001}; return g; }
+        default: return GLYPH_UNKNOWN;
+    }
+}
+
+void draw_text3x5(SDL_Renderer* renderer, const std::string& text, int x, int y, int px_size, uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255){
+    SDL_SetRenderDrawColor(renderer, r, g, b, a);
+    int cur_x = x;
+    for(char c : text){
+        const uint8_t* glyph = get_font3x5_glyph(c);
+        for(int row = 0; row < 5; row++){
+            uint8_t byte = glyph[row];
+            for(int col = 0; col < 3; col++){
+                if((byte & (0x4 >> col)) != 0){
+                    SDL_Rect rect = { cur_x + col * px_size, y + row * px_size, px_size, px_size };
+                    SDL_RenderFillRect(renderer, &rect);
+                }
+            }
+        }
+        cur_x += 4 * px_size; // 3 pixels glyph + 1 pixel gap
+    }
+}
 
 std::string get_save_filename(int slot){
     return "savestate_slot" + std::to_string(slot) + ".c8s";
@@ -179,7 +270,78 @@ void audio_callback(void* userdata, uint8_t* stream, int len){
     }
 }
 
-void draw_graphics(SDL_Renderer* renderer, Chip8& chip8, const Palette& pal){
+void draw_hud(SDL_Renderer* renderer, const Chip8& chip8, const App& app, int window_width, int window_height){
+    int px = std::max(2, app.scale / 6);
+    int line_h = 7 * px;
+
+    // Draw HUD if enabled
+    if(app.show_hud){
+        std::vector<std::string> lines;
+        lines.push_back("ROM: " + app.rom_name + " | " + (app.paused ? "PAUSED" : "RUNNING"));
+        lines.push_back("CYC/FRAME: " + std::to_string(app.cycles_per_frame) + " | PAL: " + PALETTES[app.palette].name);
+        lines.push_back("SLOT: " + std::to_string(app.slot) + " | " + (app.status.empty() ? "READY" : app.status));
+        lines.push_back("LAST: " + disassemble_opcode(chip8.get_last_opcode(), chip8.get_last_pc()));
+
+        size_t max_len = 0;
+        for(const auto& l : lines) max_len = std::max(max_len, l.size());
+
+        int box_w = (int)max_len * 4 * px + 16;
+        int box_h = (int)lines.size() * line_h + 12;
+        int box_x = 10;
+        int box_y = 10;
+
+        // Dark translucent background box
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 215);
+        SDL_Rect bg = { box_x, box_y, box_w, box_h };
+        SDL_RenderFillRect(renderer, &bg);
+        // Border
+        SDL_SetRenderDrawColor(renderer, 0, 255, 200, 220);
+        SDL_RenderDrawRect(renderer, &bg);
+
+        // Draw lines of text
+        for(size_t i = 0; i < lines.size(); i++){
+            uint8_t r = 255, g = 255, b = 255;
+            if(i == 0) { r = 0; g = 255; b = 200; }
+            else if(i == 3) { r = 255; g = 220; b = 50; }
+            draw_text3x5(renderer, lines[i], box_x + 8, box_y + 6 + (int)i * line_h, px, r, g, b);
+        }
+    }
+
+    // 5-second controls cheat-sheet when in demo mode
+    if(app.demo_mode && (SDL_GetTicks() - app.start_time < 5000)){
+        std::vector<std::string> cheat = {
+            "=== CHIP-8 CONTROLS CHEAT-SHEET ===",
+            "KEYPAD: 1234 / QWER / ASDF / ZXCV",
+            "+/- : SPEED   |   C/TAB : PALETTE   |   SPACE/P : PAUSE   |   N : STEP",
+            "F1-F4 : SLOTS   |   F5 : SAVE   |   F9 : LOAD   |   H : TOGGLE HUD"
+        };
+        int c_px = std::max(2, app.scale / 7);
+        int c_line_h = 7 * c_px;
+        size_t c_max_len = 0;
+        for(const auto& l : cheat) c_max_len = std::max(c_max_len, l.size());
+
+        int c_box_w = (int)c_max_len * 4 * c_px + 16;
+        int c_box_h = (int)cheat.size() * c_line_h + 12;
+        int c_box_x = (window_width - c_box_w) / 2;
+        int c_box_y = window_height - c_box_h - 15;
+
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(renderer, 10, 15, 30, 235);
+        SDL_Rect c_bg = { c_box_x, c_box_y, c_box_w, c_box_h };
+        SDL_RenderFillRect(renderer, &c_bg);
+        SDL_SetRenderDrawColor(renderer, 255, 215, 0, 240);
+        SDL_RenderDrawRect(renderer, &c_bg);
+
+        for(size_t i = 0; i < cheat.size(); i++){
+            uint8_t r = 255, g = 255, b = 255;
+            if(i == 0) { r = 255; g = 215; b = 0; }
+            draw_text3x5(renderer, cheat[i], c_box_x + 8, c_box_y + 6 + (int)i * c_line_h, c_px, r, g, b);
+        }
+    }
+}
+
+void draw_graphics(SDL_Renderer* renderer, Chip8& chip8, const App& app, const Palette& pal){
     // Clear screen with palette background
     SDL_SetRenderDrawColor(renderer, pal.bg[0], pal.bg[1], pal.bg[2], 255);
     SDL_RenderClear(renderer);
@@ -188,11 +350,14 @@ void draw_graphics(SDL_Renderer* renderer, Chip8& chip8, const Palette& pal){
     for(int y=0; y<32; y++){
         for(int x=0; x<64; x++){
             if(chip8.display[x + (y*64)] == 1){
-                SDL_Rect rect = {x*SCALE, y*SCALE, SCALE, SCALE};
+                SDL_Rect rect = {x * app.scale, y * app.scale, app.scale, app.scale};
                 SDL_RenderFillRect(renderer, &rect);
             }
         }
     }
+    // Draw HUD & overlays
+    draw_hud(renderer, chip8, app, 64 * app.scale, 32 * app.scale);
+
     SDL_RenderPresent(renderer);
 }
 
@@ -200,6 +365,7 @@ void update_title(SDL_Window* window, const App& app){
     std::string t = "Chip-8 | " + std::to_string(app.cycles_per_frame) + " cyc/frame | " +
                     PALETTES[app.palette].name + " | Slot " + std::to_string(app.slot);
     if(app.paused) t += " | PAUSED (N=step)";
+    if(app.show_hud) t += " | HUD";
     if(!app.status.empty()) t += " | " + app.status;
     SDL_SetWindowTitle(window, t.c_str());
 }
@@ -224,6 +390,7 @@ void handle_input(Chip8& chip8, App& app, bool& running){
             else if(k == SDLK_DOWN || k == SDLK_MINUS)                    { change_speed(app, -1); app.status.clear(); }
             else if(k == SDLK_BACKSPACE)                                  { app.cycles_per_frame = DEFAULT_CYCLES; app.status.clear(); }
             else if(k == SDLK_c || k == SDLK_TAB)                         { app.palette = (app.palette + 1) % NUM_PALETTES; chip8.draw_flag = true; app.status.clear(); }
+            else if(k == SDLK_h)                                          { app.show_hud = !app.show_hud; }
             else if(k == SDLK_SPACE || k == SDLK_p)                       { app.paused = !app.paused; app.status.clear(); }
             else if(k == SDLK_n && app.paused){
                 std::cout << "[STEP] " << disassemble_opcode(chip8.get_current_opcode(), chip8.get_pc()) << std::endl;
@@ -316,6 +483,8 @@ int main(int argc, char** argv){
     bool headless = false;
     bool dump = false;
     bool disasm_mode = false;
+    bool demo_mode = false;
+    int scale = -1;
     int cycles = 1000;
     std::string rom_path = "";
 
@@ -327,6 +496,10 @@ int main(int argc, char** argv){
             dump = true;
         } else if(arg == "--disasm"){
             disasm_mode = true;
+        } else if(arg == "--demo"){
+            demo_mode = true;
+        } else if(arg == "--scale" && i+1 < argc){
+            scale = std::stoi(argv[++i]);
         } else if(arg == "--cycles" && i+1 < argc){
             cycles = std::stoi(argv[++i]);
         } else if(arg.rfind("--", 0) != 0){
@@ -366,6 +539,20 @@ int main(int argc, char** argv){
         return 0;
     }
 
+    if(scale <= 0){
+        scale = demo_mode ? 20 : DEFAULT_SCALE;
+    }
+
+    App app;
+    app.scale = scale;
+    app.demo_mode = demo_mode;
+    app.show_hud = demo_mode;
+    app.rom_name = std::filesystem::path(rom_path).filename().string();
+    app.start_time = SDL_GetTicks();
+
+    int width = 64 * app.scale;
+    int height = 32 * app.scale;
+
     SDL_SetMainReady();
     if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0){
         std::cerr << "SDL Error: " << SDL_GetError() << std::endl;
@@ -386,7 +573,7 @@ int main(int argc, char** argv){
     if(audio_device == 0) std::cerr << "Failed to open audio: " << SDL_GetError() << std::endl;
     else SDL_PauseAudioDevice(audio_device, 0);
 
-    SDL_Window* window = SDL_CreateWindow("Chip-8 Emulator", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WIDTH, HEIGHT, SDL_WINDOW_SHOWN);
+    SDL_Window* window = SDL_CreateWindow("Chip-8 Emulator", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, SDL_WINDOW_SHOWN);
     if(!window){
         std::cerr << "Window error: " << SDL_GetError() << std::endl;
         SDL_Quit();
@@ -409,7 +596,6 @@ int main(int argc, char** argv){
         return 1;
     }
     
-    App app;
     const Uint32 FRAME_MS = 1000 / 60;
     bool running = true;
     while(running){
@@ -424,7 +610,7 @@ int main(int argc, char** argv){
         }
 
         beeping = (!app.paused && chip8.get_sound_timer() > 0);
-        draw_graphics(renderer, chip8, PALETTES[app.palette]);
+        draw_graphics(renderer, chip8, app, PALETTES[app.palette]);
         update_title(window, app);
 
         // Sleep only for what is left of this frame (delay is per FRAME, not per cycle)

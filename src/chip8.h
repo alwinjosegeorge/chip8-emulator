@@ -18,6 +18,8 @@ class Chip8{
         uint8_t get_sound_timer() const {return sound_timer;} // For getting the value of sound timer
         uint16_t get_pc() const { return pc; }
         uint16_t get_current_opcode() const { return (memory[pc & 0xFFF] << 8) | memory[(pc + 1) & 0xFFF]; }
+        uint16_t get_last_opcode() const { return last_opcode; }
+        uint16_t get_last_pc() const { return last_pc; }
     private:
         uint8_t memory[4096]; // Memory of 4KB
         uint8_t v[16]; // 16 registers, V0 to VF
@@ -28,6 +30,8 @@ class Chip8{
         uint8_t delay_timer; // Counts down at 60Hz
         uint8_t sound_timer; // Beeps when greater than 0, counts down at 60Hz
         uint16_t opcode; // Current instruction
+        uint16_t last_opcode;
+        uint16_t last_pc;
         void initialise(); // Initialises everything
         void load_fonts(); // Loads font (0-9, A-F)
 };

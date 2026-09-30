@@ -33,6 +33,8 @@ void Chip8::initialise(){
     opcode = 0;
     index = 0;
     sp = 0;
+    last_opcode = 0;
+    last_pc = 0x200;
 
     memset(display, 0, sizeof(display));
     memset(stack, 0, sizeof(stack));
@@ -74,7 +76,9 @@ bool Chip8::load_rom(const std::string& filename){
 }
 
 void Chip8::emulate_cycle(){
+    last_pc = pc;
     opcode = (memory[pc & 0xFFF] << 8) | memory[(pc + 1) & 0xFFF]; // 16-bit instruction
+    last_opcode = opcode;
 
     switch(opcode & 0xF000){ // Gets only the first 4 bits
         case 0x0000:
