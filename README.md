@@ -69,13 +69,18 @@ make
 ```
 
 ## Usage
-```bash
-./chip8 <path-to-rom-file>
-```
 
-**Example:**
 ```bash
-./chip8 roms/PONG.ch8
+# Run emulator with a ROM:
+./chip8 roms/Pong.ch8
+
+# Run ROM browser (interactive menu):
+./chip8
+# or:
+./chip8 roms/
+
+# Disassemble a ROM file:
+./chip8 --disasm roms/Pong.ch8
 ```
 
 ## Controls
@@ -90,8 +95,10 @@ make
 | `Backspace` | Reset Speed | Restores default emulation speed (10 cycles/frame) |
 | `C` / `Tab` | Cycle Palette | Cycles through Classic Green, Amber CRT, Neon, and Monochrome |
 | `Space` / `P` | Pause / Resume | Freezes/unfreezes CPU and timer execution |
-| `F5` | Quick Save | Saves emulator state to binary file `savestate.c8s` |
-| `F9` | Quick Load | Restores emulator state from `savestate.c8s` |
+| `N` | Single Step | While paused, executes exactly 1 cycle and prints instruction |
+| `F1` – `F4` | Select Slot | Selects Savestate Slot 1, 2, 3, or 4 |
+| `F5` | Quick Save | Saves state to active slot (`savestate_slotN.c8s`) |
+| `F9` | Quick Load | Restores state from active slot (`savestate_slotN.c8s`) |
 
 ### Hex Keypad Mapping
 

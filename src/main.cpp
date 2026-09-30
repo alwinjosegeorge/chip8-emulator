@@ -37,6 +37,12 @@ SDL_Keycode keymap[16] = {
     SDLK_v  // F
 };
 
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <sstream>
+#include <vector>
+
 // Speed control (CPU cycles executed per 60 Hz frame)
 const int DEFAULT_CYCLES = 10;
 const int MIN_CYCLES = 1;
@@ -57,14 +63,102 @@ const Palette PALETTES[] = {
 };
 const int NUM_PALETTES = sizeof(PALETTES) / sizeof(PALETTES[0]);
 
-const char* SAVE_FILE = "savestate.c8s";
-
 struct App {
     int cycles_per_frame = DEFAULT_CYCLES;
     int palette = 0;
+    int slot = 1;
     bool paused = false;
     std::string status;
 };
+
+std::string get_save_filename(int slot){
+    return "savestate_slot" + std::to_string(slot) + ".c8s";
+}
+
+std::string disassemble_opcode(uint16_t op, uint16_t addr){
+    std::ostringstream oss;
+    oss << "[0x" << std::uppercase << std::hex << std::setfill('0') << std::setw(3) << addr << "] 0x"
+        << std::setw(4) << op << "  ";
+
+    uint8_t x = (op & 0x0F00) >> 8;
+    uint8_t y = (op & 0x00F0) >> 4;
+    uint8_t n = op & 0x000F;
+    uint8_t kk = op & 0x00FF;
+    uint16_t nnn = op & 0x0FFF;
+
+    switch(op & 0xF000){
+        case 0x0000:
+            if(op == 0x00E0) oss << "CLS";
+            else if(op == 0x00EE) oss << "RET";
+            else oss << "SYS 0x" << std::setw(3) << nnn;
+            break;
+        case 0x1000: oss << "JP 0x" << std::setw(3) << nnn; break;
+        case 0x2000: oss << "CALL 0x" << std::setw(3) << nnn; break;
+        case 0x3000: oss << "SE V" << (int)x << ", 0x" << std::setw(2) << (int)kk; break;
+        case 0x4000: oss << "SNE V" << (int)x << ", 0x" << std::setw(2) << (int)kk; break;
+        case 0x5000: oss << "SE V" << (int)x << ", V" << (int)y; break;
+        case 0x6000: oss << "LD V" << (int)x << ", 0x" << std::setw(2) << (int)kk; break;
+        case 0x7000: oss << "ADD V" << (int)x << ", 0x" << std::setw(2) << (int)kk; break;
+        case 0x8000:
+            switch(n){
+                case 0x0: oss << "LD V" << (int)x << ", V" << (int)y; break;
+                case 0x1: oss << "OR V" << (int)x << ", V" << (int)y; break;
+                case 0x2: oss << "AND V" << (int)x << ", V" << (int)y; break;
+                case 0x3: oss << "XOR V" << (int)x << ", V" << (int)y; break;
+                case 0x4: oss << "ADD V" << (int)x << ", V" << (int)y; break;
+                case 0x5: oss << "SUB V" << (int)x << ", V" << (int)y; break;
+                case 0x6: oss << "SHR V" << (int)x; break;
+                case 0x7: oss << "SUBN V" << (int)x << ", V" << (int)y; break;
+                case 0xE: oss << "SHL V" << (int)x; break;
+                default: oss << "UNKNOWN"; break;
+            }
+            break;
+        case 0x9000: oss << "SNE V" << (int)x << ", V" << (int)y; break;
+        case 0xA000: oss << "LD I, 0x" << std::setw(3) << nnn; break;
+        case 0xB000: oss << "JP V0, 0x" << std::setw(3) << nnn; break;
+        case 0xC000: oss << "RND V" << (int)x << ", 0x" << std::setw(2) << (int)kk; break;
+        case 0xD000: oss << "DRW V" << (int)x << ", V" << (int)y << ", " << (int)n; break;
+        case 0xE000:
+            if(kk == 0x9E) oss << "SKP V" << (int)x;
+            else if(kk == 0xA1) oss << "SKNP V" << (int)x;
+            else oss << "UNKNOWN";
+            break;
+        case 0xF000:
+            switch(kk){
+                case 0x07: oss << "LD V" << (int)x << ", DT"; break;
+                case 0x0A: oss << "LD V" << (int)x << ", K"; break;
+                case 0x15: oss << "LD DT, V" << (int)x; break;
+                case 0x18: oss << "LD ST, V" << (int)x; break;
+                case 0x1E: oss << "ADD I, V" << (int)x; break;
+                case 0x29: oss << "LD F, V" << (int)x; break;
+                case 0x33: oss << "LD B, V" << (int)x; break;
+                case 0x55: oss << "LD [I], V" << (int)x; break;
+                case 0x65: oss << "LD V" << (int)x << ", [I]"; break;
+                default: oss << "UNKNOWN"; break;
+            }
+            break;
+        default: oss << "UNKNOWN"; break;
+    }
+    return oss.str();
+}
+
+int disassemble_file(const std::string& filename){
+    std::ifstream file(filename, std::ios::binary);
+    if(!file.is_open()){
+        std::cerr << "Failed to open ROM: " << filename << std::endl;
+        return 1;
+    }
+    std::vector<uint8_t> buffer((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    file.close();
+
+    std::cout << "--- Disassembly: " << filename << " (" << buffer.size() << " bytes) ---" << std::endl;
+    for(size_t i = 0; i + 1 < buffer.size(); i += 2){
+        uint16_t addr = 0x200 + (uint16_t)i;
+        uint16_t opcode = (buffer[i] << 8) | buffer[i+1];
+        std::cout << disassemble_opcode(opcode, addr) << std::endl;
+    }
+    return 0;
+}
 
 void audio_callback(void* userdata, uint8_t* stream, int len){
     static uint32_t sample_index = 0;
@@ -104,8 +198,8 @@ void draw_graphics(SDL_Renderer* renderer, Chip8& chip8, const Palette& pal){
 
 void update_title(SDL_Window* window, const App& app){
     std::string t = "Chip-8 | " + std::to_string(app.cycles_per_frame) + " cyc/frame | " +
-                    PALETTES[app.palette].name;
-    if(app.paused) t += " | PAUSED";
+                    PALETTES[app.palette].name + " | Slot " + std::to_string(app.slot);
+    if(app.paused) t += " | PAUSED (N=step)";
     if(!app.status.empty()) t += " | " + app.status;
     SDL_SetWindowTitle(window, t.c_str());
 }
@@ -130,23 +224,34 @@ void handle_input(Chip8& chip8, App& app, bool& running){
             else if(k == SDLK_DOWN || k == SDLK_MINUS)                    { change_speed(app, -1); app.status.clear(); }
             else if(k == SDLK_BACKSPACE)                                  { app.cycles_per_frame = DEFAULT_CYCLES; app.status.clear(); }
             else if(k == SDLK_c || k == SDLK_TAB)                         { app.palette = (app.palette + 1) % NUM_PALETTES; chip8.draw_flag = true; app.status.clear(); }
-            else if(k == SDLK_SPACE || k == SDLK_p)                       { app.paused = !app.paused; }
+            else if(k == SDLK_SPACE || k == SDLK_p)                       { app.paused = !app.paused; app.status.clear(); }
+            else if(k == SDLK_n && app.paused){
+                std::cout << "[STEP] " << disassemble_opcode(chip8.get_current_opcode(), chip8.get_pc()) << std::endl;
+                chip8.emulate_cycle();
+                app.status = "Step: " + disassemble_opcode(chip8.get_current_opcode(), chip8.get_pc());
+            }
+            else if(k == SDLK_F1) { app.slot = 1; app.status = "Slot 1 active"; }
+            else if(k == SDLK_F2) { app.slot = 2; app.status = "Slot 2 active"; }
+            else if(k == SDLK_F3) { app.slot = 3; app.status = "Slot 3 active"; }
+            else if(k == SDLK_F4) { app.slot = 4; app.status = "Slot 4 active"; }
             else if(k == SDLK_F5){
-                if(chip8.save_state(SAVE_FILE)){
-                    app.status = "State saved";
-                    std::cout << "Savestate saved to " << SAVE_FILE << std::endl;
+                std::string filename = get_save_filename(app.slot);
+                if(chip8.save_state(filename)){
+                    app.status = "State saved (slot " + std::to_string(app.slot) + ")";
+                    std::cout << "Savestate saved to " << filename << std::endl;
                 } else {
-                    app.status = "Save FAILED";
-                    std::cerr << "Failed to save state to " << SAVE_FILE << std::endl;
+                    app.status = "Save FAILED (slot " + std::to_string(app.slot) + ")";
+                    std::cerr << "Failed to save state to " << filename << std::endl;
                 }
             }
             else if(k == SDLK_F9){
-                if(chip8.load_state(SAVE_FILE)){
-                    app.status = "State loaded";
-                    std::cout << "Savestate loaded from " << SAVE_FILE << std::endl;
+                std::string filename = get_save_filename(app.slot);
+                if(chip8.load_state(filename)){
+                    app.status = "State loaded (slot " + std::to_string(app.slot) + ")";
+                    std::cout << "Savestate loaded from " << filename << std::endl;
                 } else {
-                    app.status = "Load FAILED";
-                    std::cerr << "Failed to load state from " << SAVE_FILE << " (corrupt/missing/wrong version)" << std::endl;
+                    app.status = "Load FAILED (slot " + std::to_string(app.slot) + ")";
+                    std::cerr << "Failed to load state from " << filename << " (corrupt/missing/wrong version)" << std::endl;
                 }
             }
 
@@ -173,9 +278,44 @@ void dump_screen(const Chip8& chip8){
     std::cout << std::flush;
 }
 
+std::string browse_roms(const std::string& dir_path){
+    std::vector<std::string> rom_files;
+    std::string search_dir = dir_path.empty() ? "roms" : dir_path;
+
+    if(std::filesystem::exists(search_dir) && std::filesystem::is_directory(search_dir)){
+        for(const auto& entry : std::filesystem::recursive_directory_iterator(search_dir)){
+            if(entry.is_regular_file() && entry.path().extension() == ".ch8"){
+                rom_files.push_back(entry.path().string());
+            }
+        }
+    }
+
+    if(rom_files.empty()){
+        std::cerr << "No .ch8 ROM files found in directory: " << search_dir << std::endl;
+        return "";
+    }
+
+    std::cout << "\n=== CHIP-8 ROM Browser ===" << std::endl;
+    for(size_t i = 0; i < rom_files.size(); i++){
+        std::cout << "  [" << (i + 1) << "] " << rom_files[i] << std::endl;
+    }
+    std::cout << "Select ROM number (1-" << rom_files.size() << ") [default: 1]: ";
+    std::string line;
+    if(std::getline(std::cin, line) && !line.empty()){
+        try {
+            int choice = std::stoi(line);
+            if(choice >= 1 && choice <= (int)rom_files.size()){
+                return rom_files[choice - 1];
+            }
+        } catch(...) {}
+    }
+    return rom_files[0];
+}
+
 int main(int argc, char** argv){
     bool headless = false;
     bool dump = false;
+    bool disasm_mode = false;
     int cycles = 1000;
     std::string rom_path = "";
 
@@ -185,6 +325,8 @@ int main(int argc, char** argv){
             headless = true;
         } else if(arg == "--dump-screen"){
             dump = true;
+        } else if(arg == "--disasm"){
+            disasm_mode = true;
         } else if(arg == "--cycles" && i+1 < argc){
             cycles = std::stoi(argv[++i]);
         } else if(arg.rfind("--", 0) != 0){
@@ -192,9 +334,19 @@ int main(int argc, char** argv){
         }
     }
 
-    if(rom_path.empty()){
-        std::cerr << "Usage: " << argv[0] << " <ROM file> [--headless] [--cycles N] [--dump-screen]" << std::endl;
-        return 1;
+    if(disasm_mode){
+        if(rom_path.empty()){
+            std::cerr << "Usage: " << argv[0] << " --disasm <ROM file>" << std::endl;
+            return 1;
+        }
+        return disassemble_file(rom_path);
+    }
+
+    if(rom_path.empty() || std::filesystem::is_directory(rom_path)){
+        rom_path = browse_roms(rom_path);
+        if(rom_path.empty()){
+            return 1;
+        }
     }
 
     if(headless){
