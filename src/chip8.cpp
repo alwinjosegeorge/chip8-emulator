@@ -318,10 +318,10 @@ void Chip8::emulate_cycle(){
             pc += 2;
             break;
     }
-    // We now update the timers
+}
+
+// Timers tick at 60 Hz, independent of CPU speed. main() calls this once per frame.
+void Chip8::update_timers(){
     if(delay_timer > 0) delay_timer--;
-    if(sound_timer > 0){
-        if(sound_timer == 1) std::cout << "BEEP!" << std::endl;
-        sound_timer--;
-    }
+    if(sound_timer > 0) sound_timer--;
 }
