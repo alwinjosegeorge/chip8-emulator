@@ -73,7 +73,7 @@ void Chip8::load_rom(const std::string& filename){
 }
 
 void Chip8::emulate_cycle(){
-    opcode = memory[pc] << 8 | memory[pc+1]; // 16-bit instruction
+    opcode = (memory[pc & 0xFFF] << 8) | memory[(pc + 1) & 0xFFF]; // 16-bit instruction
 
     switch(opcode & 0xF000){ // Gets only the first 4 bits
         case 0x0000:
@@ -84,8 +84,12 @@ void Chip8::emulate_cycle(){
                     pc += 2;
                     break;
                 case 0x00EE: // Returns from subroutine
-                    pc = stack[sp];
+                    if(sp == 0){
+                        std::cerr << "Stack underflow" << std::endl;
+                        break;
+                    }
                     sp--;
+                    pc = stack[sp];
                     pc += 2;
                     break;
                 default:
@@ -97,6 +101,10 @@ void Chip8::emulate_cycle(){
             pc = opcode & 0x0FFF;
             break;
         case 0x2000: // 2XXX = Call subroutine at XXX
+            if(sp >= 16){
+                std::cerr << "Stack overflow" << std::endl;
+                break;
+            }
             stack[sp] = pc;
             sp++;
             pc = opcode & 0x0FFF;
@@ -201,7 +209,7 @@ void Chip8::emulate_cycle(){
             v[0xF] = 0; // Resetting collision flag
             // Looping through each row of the sprite
             for(int y_line=0; y_line<height; y_line++){
-                pixel = memory[index + y_line]; // One row of sprite data
+                pixel = memory[(index + y_line) & 0xFFF]; // One row of sprite data
                 // Now looping through each pixel in the row (8)
                 for(int x_line=0; x_line<8; x_line++){
                     // Check if current pixel is 1
