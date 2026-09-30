@@ -149,31 +149,40 @@ void Chip8::emulate_cycle(){
                     pc += 2;
                     break;
                 case 0x0004:{ // v[x] += v[y], v[F] = carry
-                    uint16_t sum = v[(opcode & 0x0F00) >> 8] + v[(opcode & 0x00F0) >> 4];
-                    v[0xF] = (sum > 0xFF) ? 1: 0;   
-                    v[(opcode & 0x0F00) >> 8] = sum & 0xFF;   
+                    uint8_t vx = v[(opcode & 0x0F00) >> 8], vy = v[(opcode & 0x00F0) >> 4];
+                    uint16_t sum = vx + vy;
+                    v[(opcode & 0x0F00) >> 8] = sum & 0xFF;
+                    v[0xF] = (sum > 0xFF) ? 1 : 0;   // flag written LAST so it wins when x == F
                     pc += 2;          
                 }
                     break;
-                case 0x0005: // v[x] -= v[y], v[F] = NOT(borrow)
-                    v[0xF] = (v[(opcode & 0x0F00) >> 8] > v[(opcode & 0x00F0) >> 4]) ? 1 : 0;
-                    v[(opcode & 0x0F00) >> 8] -= v[(opcode & 0x00F0) >> 4];
+                case 0x0005:{ // v[x] -= v[y], v[F] = NOT(borrow)
+                    uint8_t vx = v[(opcode & 0x0F00) >> 8], vy = v[(opcode & 0x00F0) >> 4];
+                    v[(opcode & 0x0F00) >> 8] = vx - vy;
+                    v[0xF] = (vx >= vy) ? 1 : 0;     // CHIP-8 spec: VF = 1 when Vx >= Vy (no borrow)
                     pc += 2;
+                }
                     break;
-                case 0x0006: // v[x] >>= 1, v[F] = LSB
-                    v[0xF] = v[(opcode & 0x0F00) >> 8] & 0x1;
-                    v[(opcode & 0x0F00) >> 8] >>= 1;
+                case 0x0006:{ // v[x] >>= 1, v[F] = LSB
+                    uint8_t vx = v[(opcode & 0x0F00) >> 8];
+                    v[(opcode & 0x0F00) >> 8] = vx >> 1;
+                    v[0xF] = vx & 0x1;
                     pc += 2;
+                }
                     break;
-                case 0x0007: // v[x] = v[y] - v[x], v[F] = NOT(borrow)
-                    v[0xF] = (v[(opcode & 0x00F0) >> 4] > v[(opcode & 0x0F00) >> 8]) ? 1 : 0;
-                    v[(opcode & 0x0F00) >> 8] = v[(opcode & 0x00F0) >> 4] - v[(opcode & 0x0F00) >> 8];
+                case 0x0007:{ // v[x] = v[y] - v[x], v[F] = NOT(borrow)
+                    uint8_t vx = v[(opcode & 0x0F00) >> 8], vy = v[(opcode & 0x00F0) >> 4];
+                    v[(opcode & 0x0F00) >> 8] = vy - vx;
+                    v[0xF] = (vy >= vx) ? 1 : 0;
                     pc += 2;
+                }
                     break;
-                case 0x000E: // v[x] <<= 1, v[F] = MSB
-                    v[0xF] = v[(opcode & 0x0F00) >> 8] >> 7;  // Save MSB
-                    v[(opcode & 0x0F00) >> 8] <<= 1;
+                case 0x000E:{ // v[x] <<= 1, v[F] = MSB
+                    uint8_t vx = v[(opcode & 0x0F00) >> 8];
+                    v[(opcode & 0x0F00) >> 8] = vx << 1;
+                    v[0xF] = (vx >> 7) & 0x1;
                     pc += 2;
+                }
                     break;
                 default:
                     std::cerr << "Unknown opcode: 0x" << std::hex << opcode << std::endl;
