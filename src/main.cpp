@@ -133,7 +133,12 @@ int main(int argc, char** argv){
     }
 
     Chip8 chip8;
-    chip8.load_rom(argv[1]);
+    if(!chip8.load_rom(argv[1])){
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 1;
+    }
     
     const Uint32 FRAME_MS = 1000 / 60;
     bool running = true;

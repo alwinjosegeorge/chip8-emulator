@@ -7,7 +7,7 @@
 class Chip8{
     public:
         Chip8();
-        void load_rom(const std::string& filename); // To load a game file
+        bool load_rom(const std::string& filename); // To load a game file
         void emulate_cycle(); // To execute one instruction
         void update_timers(); // Ticks delay/sound timers (call at 60 Hz)
         bool draw_flag; // When we need to redraw the screen;

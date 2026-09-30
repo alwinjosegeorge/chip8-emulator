@@ -50,12 +50,12 @@ void Chip8::load_fonts(){
     for(int i=0; i<80; i++) memory[i] = chip8_fontset[i];
 }
 
-void Chip8::load_rom(const std::string& filename){
+bool Chip8::load_rom(const std::string& filename){
     std::ifstream file(filename, std::ios::binary | std::ios::ate);
 
     if(!file.is_open()){
         std::cerr << "Failed to open ROM: " << filename << std::endl;
-        return;
+        return false;
     }
 
     std::streamsize size = file.tellg();
@@ -63,13 +63,14 @@ void Chip8::load_rom(const std::string& filename){
 
     if(size > (4096-512)){ // 512 reserved for fonts/interpreter
         std::cerr << "ROM too large to fit in memory" << std::endl;
-        return;
+        return false;
     }
 
     file.read((char*)(memory+512),size);
     file.close();
 
     std::cout << "Loaded ROM: " << filename << std::endl;
+    return true;
 }
 
 void Chip8::emulate_cycle(){
@@ -242,11 +243,11 @@ void Chip8::emulate_cycle(){
         case 0xE000: 
             switch(opcode & 0x00FF){
                 case 0x009E: // EX9E = skip next instr. if key[v[x]] is pressed
-                    if(key[v[(opcode & 0x0F00) >> 8]] != 0) pc += 4;
+                    if(key[v[(opcode & 0x0F00) >> 8] & 0xF] != 0) pc += 4;
                     else pc += 2;
                     break;
                 case 0x00A1: // EXA1 = skip next instr. if key[v[x]] is not pressed
-                    if(key[v[(opcode & 0x0F00) >> 8]] == 0) pc += 4;
+                    if(key[v[(opcode & 0x0F00) >> 8] & 0xF] == 0) pc += 4;
                     else pc += 2;
                     break;
                 default:
@@ -285,7 +286,7 @@ void Chip8::emulate_cycle(){
                     pc += 2;
                     break;
                 case 0x0029: // FX29 - index = location of sprite for digit v[x]
-                    index = v[(opcode & 0x0F00) >> 8] * 5;
+                    index = (v[(opcode & 0x0F00) >> 8] & 0xF) * 5;
                     pc += 2;
                     break;
                 case 0x0033:{ // FX33 - store BCD representation of v[x] at index
