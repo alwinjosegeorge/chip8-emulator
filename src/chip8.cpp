@@ -269,7 +269,7 @@ void Chip8::emulate_cycle(){
                             break;
                         }
                     }
-                    pc += 2;
+                    if(key_pressed) pc += 2;
                 }
                     break;
                 case 0x0015: // FX15 - delay_timer = v[x]
@@ -290,21 +290,21 @@ void Chip8::emulate_cycle(){
                     break;
                 case 0x0033:{ // FX33 - store BCD representation of v[x] at index
                     uint8_t value = v[(opcode & 0x0F00) >> 8];
-                    memory[index] = value/100;
-                    memory[index+1] = value/10;
-                    memory[index+2] = value%10;
+                    memory[index & 0xFFF] = value/100;
+                    memory[(index+1) & 0xFFF] = (value/10) % 10;
+                    memory[(index+2) & 0xFFF] = value%10;
                     pc += 2;
                 }
                     break;
                 case 0x0055: // FX55 - store v[0] to v[x] in memory starting from index
-                    for(int i=0; i<((opcode & 0x0F00) >> 8); i++){
-                        memory[index+i] = v[i];
+                    for(int i=0; i<=((opcode & 0x0F00) >> 8); i++){
+                        memory[(index+i) & 0xFFF] = v[i];
                     }
                     pc += 2;
                     break;
                 case 0x0065: // FX65 - Fill v[0] to v[x] from memory starting at index
-                    for(int i=0; i<((opcode & 0x0F00) >> 8); i++){
-                        v[i] = memory[index+i];
+                    for(int i=0; i<=((opcode & 0x0F00) >> 8); i++){
+                        v[i] = memory[(index+i) & 0xFFF];
                     }
                     pc += 2;
                     break;
