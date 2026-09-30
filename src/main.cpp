@@ -55,10 +55,11 @@ struct Palette {
 };
 
 const Palette PALETTES[] = {
-    {"Classic Green",       {  0,  20,   0}, { 51, 255,  51}},
-    {"Amber CRT",           { 20,  10,   0}, {255, 176,   0}},
-    {"Neon High-Contrast",  {  5,   0,  20}, {  0, 255, 255}},
-    {"White-on-Black",      {  0,   0,   0}, {255, 255, 255}},
+    {"Modern Slate (White/Black)", { 18,  20,  24}, {245, 245, 250}}, // Default sleek dark-slate & white
+    {"Classic Green CRT",          {  0,  20,   0}, { 51, 255,  51}},
+    {"Amber Phosphor",             { 20,  10,   0}, {255, 176,   0}},
+    {"Cyber Neon",                 {  5,   0,  20}, {  0, 255, 255}},
+    {"Pure Monochrome",            {  0,   0,   0}, {255, 255, 255}},
 };
 const int NUM_PALETTES = sizeof(PALETTES) / sizeof(PALETTES[0]);
 
@@ -70,6 +71,8 @@ struct App {
     bool paused = false;
     bool show_hud = false;
     bool demo_mode = false;
+    bool in_menu = false;
+    int menu_selection = 0;
     Uint32 start_time = 0;
     std::string rom_name;
     std::string status;
@@ -277,7 +280,7 @@ void draw_hud(SDL_Renderer* renderer, const Chip8& chip8, const App& app, int wi
     // Draw HUD if enabled
     if(app.show_hud){
         std::vector<std::string> lines;
-        lines.push_back("ROM: " + app.rom_name + " | " + (app.paused ? "PAUSED" : "RUNNING"));
+        lines.push_back("ROM: " + app.rom_name + " | " + (app.paused ? "PAUSED" : "RUNNING") + " | ESC: HOME");
         lines.push_back("CYC/FRAME: " + std::to_string(app.cycles_per_frame) + " | PAL: " + PALETTES[app.palette].name);
         lines.push_back("SLOT: " + std::to_string(app.slot) + " | " + (app.status.empty() ? "READY" : app.status));
         lines.push_back("LAST: " + disassemble_opcode(chip8.get_last_opcode(), chip8.get_last_pc()));
@@ -310,12 +313,22 @@ void draw_hud(SDL_Renderer* renderer, const Chip8& chip8, const App& app, int wi
 
     // 5-second controls cheat-sheet when in demo mode
     if(app.demo_mode && (SDL_GetTicks() - app.start_time < 5000)){
-        std::vector<std::string> cheat = {
-            "=== CHIP-8 CONTROLS CHEAT-SHEET ===",
-            "KEYPAD: 1234 / QWER / ASDF / ZXCV",
-            "+/- : SPEED   |   C/TAB : PALETTE   |   SPACE/P : PAUSE   |   N : STEP",
-            "F1-F4 : SLOTS   |   F5 : SAVE   |   F9 : LOAD   |   H : TOGGLE HUD"
-        };
+        std::vector<std::string> cheat;
+        std::string lower = app.rom_name;
+        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+
+        cheat.push_back("=== CHIP-8 CONTROLS CHEAT-SHEET ===");
+        if(lower.find("pong") != std::string::npos){
+            cheat.push_back("P1: [W] UP, [S] DOWN   |   P2: [UP ARROW], [DOWN ARROW]");
+        } else if(lower.find("tetris") != std::string::npos){
+            cheat.push_back("[A/D] or [ARROWS]: MOVE  |  [W/UP]: ROTATE  |  [S/DOWN]: DROP");
+        } else if(lower.find("blinky") != std::string::npos){
+            cheat.push_back("[WASD] or [ARROWS]: MOVE PAC-MAN IN 4 DIRECTIONS");
+        } else {
+            cheat.push_back("CONTROLS: [WASD] or [ARROWS]  |  HEX: 1234/QWER/ASDF/ZXCV");
+        }
+        cheat.push_back("ESC: HOME MENU   |   +/- : SPEED   |   C/TAB : PALETTE   |   SPACE/P : PAUSE");
+        cheat.push_back("F1-F4 : SLOTS   |   F5 : SAVE   |   F9 : LOAD   |   H : TOGGLE HUD");
         int c_px = std::max(2, app.scale / 7);
         int c_line_h = 7 * c_px;
         size_t c_max_len = 0;
@@ -377,6 +390,45 @@ void change_speed(App& app, int direction){
     if(app.cycles_per_frame > MAX_CYCLES) app.cycles_per_frame = MAX_CYCLES;
 }
 
+void apply_game_key(Chip8& chip8, const App& app, SDL_Keycode k, uint8_t state){
+    // 1. Standard Chip-8 16-key hex keypad
+    for(int i=0; i<16; i++){
+        if(k == keymap[i]) chip8.key[i] = state;
+    }
+
+    std::string lower = app.rom_name;
+    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+
+    // 2. Pong custom controls: Player 1 = W/S, Player 2 = Up/Down arrows
+    if(lower.find("pong") != std::string::npos){
+        if(k == SDLK_w) chip8.key[1] = state;           // P1 Up
+        if(k == SDLK_s) chip8.key[4] = state;           // P1 Down
+        if(k == SDLK_UP) chip8.key[12] = state;         // P2 Up (0xC)
+        if(k == SDLK_DOWN) chip8.key[13] = state;       // P2 Down (0xD)
+    }
+    // 3. Tetris custom controls: A/D/Left/Right = Move, W/Up = Rotate, S/Down = Drop
+    else if(lower.find("tetris") != std::string::npos){
+        if(k == SDLK_a || k == SDLK_LEFT) chip8.key[4] = state;   // Left
+        if(k == SDLK_d || k == SDLK_RIGHT) chip8.key[6] = state;  // Right
+        if(k == SDLK_w || k == SDLK_UP) chip8.key[5] = state;     // Rotate
+        if(k == SDLK_s || k == SDLK_DOWN) chip8.key[7] = state;   // Drop
+    }
+    // 4. Blinky custom controls: W/Up = Up, S/Down = Down, A/Left = Left, D/Right = Right
+    else if(lower.find("blinky") != std::string::npos){
+        if(k == SDLK_w || k == SDLK_UP) chip8.key[3] = state;     // Up
+        if(k == SDLK_s || k == SDLK_DOWN) chip8.key[6] = state;   // Down
+        if(k == SDLK_a || k == SDLK_LEFT) chip8.key[7] = state;   // Left
+        if(k == SDLK_d || k == SDLK_RIGHT) chip8.key[8] = state;  // Right
+    }
+    // 5. Default WASD / Arrow mapping for other games
+    else {
+        if(k == SDLK_w || k == SDLK_UP) chip8.key[5] = state;     // Up/Action
+        if(k == SDLK_s || k == SDLK_DOWN) chip8.key[8] = state;   // Down
+        if(k == SDLK_a || k == SDLK_LEFT) chip8.key[7] = state;   // Left
+        if(k == SDLK_d || k == SDLK_RIGHT) chip8.key[9] = state;  // Right
+    }
+}
+
 void handle_input(Chip8& chip8, App& app, bool& running){
     SDL_Event event;
 
@@ -384,19 +436,27 @@ void handle_input(Chip8& chip8, App& app, bool& running){
         if(event.type == SDL_QUIT) running = false;
         if(event.type == SDL_KEYDOWN){
             SDL_Keycode k = event.key.keysym.sym;
-            if(k == SDLK_ESCAPE) running = false;
-            // Emulator controls
-            else if(k == SDLK_UP   || k == SDLK_EQUALS || k == SDLK_PLUS) { change_speed(app, +1); app.status.clear(); }
-            else if(k == SDLK_DOWN || k == SDLK_MINUS)                    { change_speed(app, -1); app.status.clear(); }
-            else if(k == SDLK_BACKSPACE)                                  { app.cycles_per_frame = DEFAULT_CYCLES; app.status.clear(); }
-            else if(k == SDLK_c || k == SDLK_TAB)                         { app.palette = (app.palette + 1) % NUM_PALETTES; chip8.draw_flag = true; app.status.clear(); }
-            else if(k == SDLK_h)                                          { app.show_hud = !app.show_hud; }
-            else if(k == SDLK_SPACE || k == SDLK_p)                       { app.paused = !app.paused; app.status.clear(); }
+            // Pressing ESC or M returns to the Home Menu!
+            if(k == SDLK_ESCAPE || k == SDLK_m){
+                app.in_menu = true;
+                app.paused = false;
+                for(int i=0; i<16; i++) chip8.key[i] = 0;
+                app.status = "Home Menu";
+            }
+            // Speed controls (+ / -) and reset (Backspace)
+            else if(k == SDLK_EQUALS || k == SDLK_PLUS) { change_speed(app, +1); app.status.clear(); }
+            else if(k == SDLK_MINUS  || k == SDLK_UNDERSCORE) { change_speed(app, -1); app.status.clear(); }
+            else if(k == SDLK_BACKSPACE) { app.cycles_per_frame = DEFAULT_CYCLES; app.status.clear(); }
+            // Visual & HUD
+            else if(k == SDLK_c || k == SDLK_TAB) { app.palette = (app.palette + 1) % NUM_PALETTES; chip8.draw_flag = true; app.status.clear(); }
+            else if(k == SDLK_h) { app.show_hud = !app.show_hud; }
+            else if(k == SDLK_SPACE || k == SDLK_p) { app.paused = !app.paused; app.status.clear(); }
             else if(k == SDLK_n && app.paused){
                 std::cout << "[STEP] " << disassemble_opcode(chip8.get_current_opcode(), chip8.get_pc()) << std::endl;
                 chip8.emulate_cycle();
                 app.status = "Step: " + disassemble_opcode(chip8.get_current_opcode(), chip8.get_pc());
             }
+            // Savestate slots & ops
             else if(k == SDLK_F1) { app.slot = 1; app.status = "Slot 1 active"; }
             else if(k == SDLK_F2) { app.slot = 2; app.status = "Slot 2 active"; }
             else if(k == SDLK_F3) { app.slot = 3; app.status = "Slot 3 active"; }
@@ -422,15 +482,11 @@ void handle_input(Chip8& chip8, App& app, bool& running){
                 }
             }
 
-            // Check which Chip-8 key was pressed
-            for(int i=0; i<16; i++){
-                if(k == keymap[i]) chip8.key[i] = 1;
-            }
+            // Apply game inputs (WASD, Arrows, and Hex keypad)
+            apply_game_key(chip8, app, k, 1);
         }
         if(event.type == SDL_KEYUP){
-            for(int i=0; i<16; i++){
-                if(event.key.keysym.sym == keymap[i]) chip8.key[i] = 0;
-            }
+            apply_game_key(chip8, app, event.key.keysym.sym, 0);
         }
     }
 }
@@ -445,38 +501,204 @@ void dump_screen(const Chip8& chip8){
     std::cout << std::flush;
 }
 
-std::string browse_roms(const std::string& dir_path){
-    std::vector<std::string> rom_files;
-    std::string search_dir = dir_path.empty() ? "roms" : dir_path;
+struct RomEntry {
+    std::string title;
+    std::string subtitle;
+    std::string path;
+};
 
-    if(std::filesystem::exists(search_dir) && std::filesystem::is_directory(search_dir)){
-        for(const auto& entry : std::filesystem::recursive_directory_iterator(search_dir)){
+std::vector<RomEntry> get_available_roms(){
+    std::vector<RomEntry> list;
+    if(std::filesystem::exists("roms/Pong.ch8")){
+        list.push_back({"1. PONG", "2-PLAYER TENNIS (P1: W/S | P2: ARROWS)", "roms/Pong.ch8"});
+    }
+    if(std::filesystem::exists("roms/Tetris.ch8")){
+        list.push_back({"2. TETRIS", "PUZZLE (A/D/ARROWS: MOVE, W/UP: ROTATE)", "roms/Tetris.ch8"});
+    }
+    if(std::filesystem::exists("roms/Blinky.ch8")){
+        list.push_back({"3. BLINKY", "PAC-MAN ARCADE (WASD / ARROWS: MOVE)", "roms/Blinky.ch8"});
+    }
+    if(std::filesystem::exists("roms")){
+        for(const auto& entry : std::filesystem::recursive_directory_iterator("roms")){
             if(entry.is_regular_file() && entry.path().extension() == ".ch8"){
-                rom_files.push_back(entry.path().string());
+                std::string p = entry.path().string();
+                std::replace(p.begin(), p.end(), '\\', '/');
+                if(p == "roms/Pong.ch8" || p == "roms/Tetris.ch8" || p == "roms/Blinky.ch8"){
+                    continue;
+                }
+                std::string stem = entry.path().stem().string();
+                std::string title = std::to_string(list.size() + 1) + ". " + stem;
+                std::string sub = (p.find("tests") != std::string::npos) ? "TEST SUITE ROM" : "CHIP-8 ROM";
+                list.push_back({title, sub, p});
+            }
+        }
+    }
+    return list;
+}
+
+void draw_menu(SDL_Renderer* renderer, const App& app, const std::vector<RomEntry>& roms, int selected_index, const Palette& pal){
+    int win_w = 64 * app.scale;
+    int win_h = 32 * app.scale;
+
+    // Clear background with palette background
+    SDL_SetRenderDrawColor(renderer, pal.bg[0], pal.bg[1], pal.bg[2], 255);
+    SDL_RenderClear(renderer);
+
+    int px = std::max(2, app.scale / 6);
+    int line_h = 7 * px;
+
+    // Top Header Banner
+    int header_box_w = win_w - 40;
+    int header_box_h = 2 * line_h + 10;
+    int header_x = 20;
+    int header_y = 10;
+
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 200);
+    SDL_Rect h_rect = { header_x, header_y, header_box_w, header_box_h };
+    SDL_RenderFillRect(renderer, &h_rect);
+    SDL_SetRenderDrawColor(renderer, pal.fg[0], pal.fg[1], pal.fg[2], 200);
+    SDL_RenderDrawRect(renderer, &h_rect);
+
+    std::string title = "=== CHIP-8 RETRO CONSOLE ===";
+    std::string sub = "SELECT A GAME TO PLAY";
+    draw_text3x5(renderer, title, header_x + (header_box_w - (int)title.size() * 4 * px) / 2, header_y + 4, px, 255, 215, 0);
+    draw_text3x5(renderer, sub, header_x + (header_box_w - (int)sub.size() * 4 * px) / 2, header_y + 4 + line_h, px, 220, 225, 235);
+
+    // List of ROMs
+    int list_y = header_y + header_box_h + 8;
+    int footer_h = 2 * line_h + 10;
+    int available_h = win_h - list_y - footer_h - 12;
+    int count = (int)roms.size();
+    int row_h = count > 0 ? (available_h / count) : 24;
+    if(row_h > line_h + 10) row_h = line_h + 10;
+    if(row_h < line_h + 2) row_h = line_h + 2;
+
+    for(int i = 0; i < count; i++){
+        int iy = list_y + i * row_h;
+        if(iy + row_h > win_h - footer_h - 6) break;
+
+        bool is_sel = (i == selected_index);
+        SDL_Rect item_rect = { 20, iy, win_w - 40, row_h - 2 };
+
+        if(is_sel){
+            // Highlight background
+            SDL_SetRenderDrawColor(renderer, 45, 55, 75, 220);
+            SDL_RenderFillRect(renderer, &item_rect);
+            SDL_SetRenderDrawColor(renderer, 255, 215, 0, 255);
+            SDL_RenderDrawRect(renderer, &item_rect);
+
+            std::string cursor = "> ";
+            draw_text3x5(renderer, cursor + roms[i].title, 26, iy + (row_h - 5 * px) / 2, px, 255, 255, 255);
+
+            int sub_x = win_w - 26 - (int)roms[i].subtitle.size() * 4 * px;
+            if(sub_x > 26 + (int)(cursor + roms[i].title).size() * 4 * px + 8){
+                draw_text3x5(renderer, roms[i].subtitle, sub_x, iy + (row_h - 5 * px) / 2, px, 255, 215, 0);
+            }
+        } else {
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 90);
+            SDL_RenderFillRect(renderer, &item_rect);
+
+            std::string cursor = "  ";
+            draw_text3x5(renderer, cursor + roms[i].title, 26, iy + (row_h - 5 * px) / 2, px, 180, 190, 205);
+
+            int sub_x = win_w - 26 - (int)roms[i].subtitle.size() * 4 * px;
+            if(sub_x > 26 + (int)(cursor + roms[i].title).size() * 4 * px + 8){
+                draw_text3x5(renderer, roms[i].subtitle, sub_x, iy + (row_h - 5 * px) / 2, px, 130, 140, 150);
             }
         }
     }
 
-    if(rom_files.empty()){
-        std::cerr << "No .ch8 ROM files found in directory: " << search_dir << std::endl;
-        return "";
-    }
+    // Footer Help Bar
+    int footer_y = win_h - footer_h - 6;
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 200);
+    SDL_Rect f_rect = { 20, footer_y, win_w - 40, footer_h };
+    SDL_RenderFillRect(renderer, &f_rect);
+    SDL_SetRenderDrawColor(renderer, 80, 85, 95, 255);
+    SDL_RenderDrawRect(renderer, &f_rect);
 
-    std::cout << "\n=== CHIP-8 ROM Browser ===" << std::endl;
-    for(size_t i = 0; i < rom_files.size(); i++){
-        std::cout << "  [" << (i + 1) << "] " << rom_files[i] << std::endl;
-    }
-    std::cout << "Select ROM number (1-" << rom_files.size() << ") [default: 1]: ";
-    std::string line;
-    if(std::getline(std::cin, line) && !line.empty()){
-        try {
-            int choice = std::stoi(line);
-            if(choice >= 1 && choice <= (int)rom_files.size()){
-                return rom_files[choice - 1];
+    std::string f1 = "UP/DOWN: SELECT  |  ENTER/SPACE/CLICK: PLAY  |  1-" + std::to_string(std::min(count, 9)) + ": QUICK LAUNCH";
+    std::string f2 = "C/TAB: PALETTE (" + std::string(pal.name) + ")  |  ESC: QUIT";
+    draw_text3x5(renderer, f1, 26, footer_y + 4, px, 0, 255, 200);
+    draw_text3x5(renderer, f2, 26, footer_y + 4 + line_h, px, 200, 205, 215);
+
+    SDL_RenderPresent(renderer);
+}
+
+void handle_menu_input(Chip8& chip8, App& app, const std::vector<RomEntry>& roms, int& selected_index, bool& running){
+    SDL_Event event;
+    while(SDL_PollEvent(&event)){
+        if(event.type == SDL_QUIT) running = false;
+        else if(event.type == SDL_KEYDOWN){
+            SDL_Keycode k = event.key.keysym.sym;
+            if(k == SDLK_ESCAPE){
+                running = false;
+            } else if(k == SDLK_UP || k == SDLK_w){
+                if(!roms.empty()){
+                    selected_index = (selected_index - 1 + (int)roms.size()) % (int)roms.size();
+                }
+            } else if(k == SDLK_DOWN || k == SDLK_s){
+                if(!roms.empty()){
+                    selected_index = (selected_index + 1) % (int)roms.size();
+                }
+            } else if(k >= SDLK_1 && k <= SDLK_9){
+                int idx = k - SDLK_1;
+                if(idx < (int)roms.size()){
+                    selected_index = idx;
+                    chip8 = Chip8();
+                    if(chip8.load_rom(roms[selected_index].path)){
+                        app.rom_name = std::filesystem::path(roms[selected_index].path).filename().string();
+                        app.in_menu = false;
+                        app.start_time = SDL_GetTicks();
+                        app.status = "Playing " + app.rom_name;
+                    }
+                }
+            } else if(k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_SPACE){
+                if(!roms.empty() && selected_index >= 0 && selected_index < (int)roms.size()){
+                    chip8 = Chip8();
+                    if(chip8.load_rom(roms[selected_index].path)){
+                        app.rom_name = std::filesystem::path(roms[selected_index].path).filename().string();
+                        app.in_menu = false;
+                        app.start_time = SDL_GetTicks();
+                        app.status = "Playing " + app.rom_name;
+                    }
+                }
+            } else if(k == SDLK_c || k == SDLK_TAB){
+                app.palette = (app.palette + 1) % NUM_PALETTES;
             }
-        } catch(...) {}
+        } else if(event.type == SDL_MOUSEBUTTONDOWN){
+            if(event.button.button == SDL_BUTTON_LEFT){
+                int my = event.button.y;
+                int mx = event.button.x;
+                int win_w = 64 * app.scale;
+                int win_h = 32 * app.scale;
+                int px = std::max(2, app.scale / 6);
+                int line_h = 7 * px;
+                int header_box_h = 2 * line_h + 10;
+                int list_y = 10 + header_box_h + 8;
+                int footer_h = 2 * line_h + 10;
+                int available_h = win_h - list_y - footer_h - 12;
+                int count = (int)roms.size();
+                int row_h = count > 0 ? (available_h / count) : 24;
+                if(row_h > line_h + 10) row_h = line_h + 10;
+                if(row_h < line_h + 2) row_h = line_h + 2;
+
+                if(mx >= 20 && mx <= win_w - 20 && my >= list_y){
+                    int clicked_idx = (my - list_y) / row_h;
+                    if(clicked_idx >= 0 && clicked_idx < count){
+                        selected_index = clicked_idx;
+                        chip8 = Chip8();
+                        if(chip8.load_rom(roms[selected_index].path)){
+                            app.rom_name = std::filesystem::path(roms[selected_index].path).filename().string();
+                            app.in_menu = false;
+                            app.start_time = SDL_GetTicks();
+                            app.status = "Playing " + app.rom_name;
+                        }
+                    }
+                }
+            }
+        }
     }
-    return rom_files[0];
 }
 
 int main(int argc, char** argv){
@@ -515,14 +737,10 @@ int main(int argc, char** argv){
         return disassemble_file(rom_path);
     }
 
-    if(rom_path.empty() || std::filesystem::is_directory(rom_path)){
-        rom_path = browse_roms(rom_path);
-        if(rom_path.empty()){
-            return 1;
-        }
-    }
-
     if(headless){
+        if(rom_path.empty()){
+            rom_path = "roms/Pong.ch8";
+        }
         Chip8 chip8;
         if(!chip8.load_rom(rom_path)){
             return 1;
@@ -543,12 +761,20 @@ int main(int argc, char** argv){
         scale = demo_mode ? 20 : DEFAULT_SCALE;
     }
 
+    std::vector<RomEntry> roms = get_available_roms();
+
     App app;
     app.scale = scale;
     app.demo_mode = demo_mode;
     app.show_hud = demo_mode;
-    app.rom_name = std::filesystem::path(rom_path).filename().string();
     app.start_time = SDL_GetTicks();
+
+    if(rom_path.empty()){
+        app.in_menu = true;
+    } else {
+        app.in_menu = false;
+        app.rom_name = std::filesystem::path(rom_path).filename().string();
+    }
 
     int width = 64 * app.scale;
     int height = 32 * app.scale;
@@ -573,7 +799,7 @@ int main(int argc, char** argv){
     if(audio_device == 0) std::cerr << "Failed to open audio: " << SDL_GetError() << std::endl;
     else SDL_PauseAudioDevice(audio_device, 0);
 
-    SDL_Window* window = SDL_CreateWindow("Chip-8 Emulator", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, SDL_WINDOW_SHOWN);
+    SDL_Window* window = SDL_CreateWindow("Chip-8 Retro Console", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, SDL_WINDOW_SHOWN);
     if(!window){
         std::cerr << "Window error: " << SDL_GetError() << std::endl;
         SDL_Quit();
@@ -589,29 +815,40 @@ int main(int argc, char** argv){
     }
 
     Chip8 chip8;
-    if(!chip8.load_rom(rom_path)){
-        SDL_DestroyRenderer(renderer);
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        return 1;
+    if(!app.in_menu){
+        if(!chip8.load_rom(rom_path)){
+            SDL_DestroyRenderer(renderer);
+            SDL_DestroyWindow(window);
+            SDL_Quit();
+            return 1;
+        }
     }
     
     const Uint32 FRAME_MS = 1000 / 60;
     bool running = true;
+    int menu_selection = 0;
+
     while(running){
         Uint32 frame_start = SDL_GetTicks();
 
-        handle_input(chip8, app, running);
-        if(!app.paused){
-            for(int i=0; i<app.cycles_per_frame; i++){
-                chip8.emulate_cycle();
+        if(app.in_menu){
+            handle_menu_input(chip8, app, roms, menu_selection, running);
+            draw_menu(renderer, app, roms, menu_selection, PALETTES[app.palette]);
+            beeping = false;
+            SDL_SetWindowTitle(window, ("Chip-8 Retro Console | Home Menu | Palette: " + std::string(PALETTES[app.palette].name)).c_str());
+        } else {
+            handle_input(chip8, app, running);
+            if(!app.paused){
+                for(int i=0; i<app.cycles_per_frame; i++){
+                    chip8.emulate_cycle();
+                }
+                chip8.update_timers(); // exactly once per frame => 60 Hz
             }
-            chip8.update_timers(); // exactly once per frame => 60 Hz
-        }
 
-        beeping = (!app.paused && chip8.get_sound_timer() > 0);
-        draw_graphics(renderer, chip8, app, PALETTES[app.palette]);
-        update_title(window, app);
+            beeping = (!app.paused && chip8.get_sound_timer() > 0);
+            draw_graphics(renderer, chip8, app, PALETTES[app.palette]);
+            update_title(window, app);
+        }
 
         // Sleep only for what is left of this frame (delay is per FRAME, not per cycle)
         Uint32 elapsed = SDL_GetTicks() - frame_start;

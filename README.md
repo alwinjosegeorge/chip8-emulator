@@ -71,19 +71,18 @@ make
 ## Usage
 
 ```bash
-# Run emulator with a ROM (default 10x scale):
-./chip8 roms/Pong.ch8
+# Launch interactive graphical Home Page & Game Hub:
+./chip8
+# or with demo recording mode (20x scale, HUD ready):
+./chip8 --demo
 
-# Run in recording-friendly demo mode (20x scale, HUD active, 5-sec cheat-sheet):
-./chip8 roms/Pong.ch8 --demo
+# Run directly with a specific ROM:
+./chip8 roms/Pong.ch8
+./chip8 roms/Tetris.ch8
+./chip8 roms/Blinky.ch8
 
 # Run with custom window scale:
 ./chip8 roms/Tetris.ch8 --scale 15
-
-# Run ROM browser (interactive menu):
-./chip8
-# or:
-./chip8 roms/
 
 # Disassemble a ROM file:
 ./chip8 --disasm roms/Pong.ch8
@@ -105,25 +104,45 @@ make
 
 ## Controls
 
-### Emulator Hotkeys
+### Home Page / Game Hub
+When launched with `./chip8` or `./chip8 --demo`, an interactive GUI Home Screen is presented:
+- **`Up` / `Down` Arrow** or **`W` / `S`**: Navigate game selection
+- **`Enter` / `Space` / Left Mouse Click**: Launch selected game
+- **`1` – `9`**: Quick-launch game by number
+- **`C` / `Tab`**: Cycle color palettes live on menu
+- **`ESC`**: Exit application
+
+### In-Game Navigation & Hotkeys
 
 | Key / Shortcut | Action | Description |
 | :--- | :--- | :--- |
-| `ESC` | Quit | Closes the emulator |
+| `ESC` or `M` | **Return to Home** | Pauses gameplay and returns to the Home Page to choose another game |
 | `H` | Toggle HUD | Shows/hides on-screen overlay (ROM, speed, palette, slot, last opcode) |
-| `Up` / `+` / `=` | Speed Up | Increases CPU cycles executed per frame (1..200) |
-| `Down` / `-` | Speed Down | Decreases CPU cycles executed per frame |
-| `Backspace` | Reset Speed | Restores default emulation speed (10 cycles/frame) |
-| `C` / `Tab` | Cycle Palette | Cycles through Classic Green, Amber CRT, Neon, and Monochrome |
+| `+` / `=` | Speed Up | Increases CPU cycles executed per frame (1..200) |
+| `-` | Speed Down | Decreases CPU cycles executed per frame |
+| `Backspace` | Reset Speed | Restores default emulation speed (10 cycles/frame, 600 Hz) |
+| `C` / `Tab` | Cycle Palette | Modern Slate (White/Black), Classic Green, Amber CRT, Cyber Neon, Pure Monochrome |
 | `Space` / `P` | Pause / Resume | Freezes/unfreezes CPU and timer execution |
 | `N` | Single Step | While paused, executes exactly 1 cycle and prints instruction |
 | `F1` – `F4` | Select Slot | Selects Savestate Slot 1, 2, 3, or 4 |
 | `F5` | Quick Save | Saves state to active slot (`savestate_slotN.c8s`) |
 | `F9` | Quick Load | Restores state from active slot (`savestate_slotN.c8s`) |
 
-### Hex Keypad Mapping
+### Game Controls (WASD & Arrow Keys)
 
-The standard Chip-8 16-key keypad maps to the QWERTY keyboard:
+- **PONG**:
+  - **Player 1 (Left)**: **`W`** (Up), **`S`** (Down) *(or retro `1`, `Q`)*
+  - **Player 2 (Right)**: **`Up Arrow`** (Up), **`Down Arrow`** (Down) *(or retro `4`, `R`)*
+- **TETRIS**:
+  - Move Left / Right: **`A`** / **`D`** or **`Left`** / **`Right Arrow`**
+  - Rotate: **`W`** or **`Up Arrow`**
+  - Soft Drop: **`S`** or **`Down Arrow`**
+- **BLINKY (Pac-Man)**:
+  - 4-Way Movement: **`W`**, **`A`**, **`S`**, **`D`** or **Arrow Keys** (`Up`, `Left`, `Down`, `Right`)
+
+### Standard 16-Key Hex Keypad Mapping (Fallback)
+
+The original 16-key hex keypad remains fully supported on standard QWERTY:
 
 ```
 Chip-8 Keypad:          QWERTY Keyboard:
@@ -137,18 +156,6 @@ Chip-8 Keypad:          QWERTY Keyboard:
 │A│0│B│F│               │Z│X│C│V│
 └─┴─┴─┴─┘               └─┴─┴─┴─┘
 ```
-
-### Game-Specific Controls
-
-**PONG:**
-- Left paddle: `1` (up), `Q` (down)
-- Right paddle: `4` (up), `R` (down)
-
-**TETRIS:**
-- `Q` - Rotate
-- `W` - Drop
-- `E` - Move right
-- `A` - Move left
 
 ## Testing & Headless Mode
 
