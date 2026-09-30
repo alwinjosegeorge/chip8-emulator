@@ -18,6 +18,10 @@ test: tests/test_core.cpp src/chip8.cpp
 	./run_tests
 
 clean:
+ifeq ($(OS),Windows_NT)
+	-cmd /C "del /Q /F src\*.o $(TARGET).exe $(TARGET) run_tests.exe run_tests 2>NUL"
+else
 	rm -f $(OBJECTS) $(TARGET) run_tests run_tests.exe
+endif
 
 .PHONY: all clean test
