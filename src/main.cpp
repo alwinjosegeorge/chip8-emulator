@@ -37,6 +37,35 @@ SDL_Keycode keymap[16] = {
     SDLK_v  // F
 };
 
+// Speed control (CPU cycles executed per 60 Hz frame)
+const int DEFAULT_CYCLES = 10;
+const int MIN_CYCLES = 1;
+const int MAX_CYCLES = 200;
+
+// Colour palettes: {name, background {R,G,B}, foreground {R,G,B}}
+struct Palette {
+    const char* name;
+    uint8_t bg[3];
+    uint8_t fg[3];
+};
+
+const Palette PALETTES[] = {
+    {"Classic Green",       {  0,  20,   0}, { 51, 255,  51}},
+    {"Amber CRT",           { 20,  10,   0}, {255, 176,   0}},
+    {"Neon High-Contrast",  {  5,   0,  20}, {  0, 255, 255}},
+    {"White-on-Black",      {  0,   0,   0}, {255, 255, 255}},
+};
+const int NUM_PALETTES = sizeof(PALETTES) / sizeof(PALETTES[0]);
+
+const char* SAVE_FILE = "savestate.c8s";
+
+struct App {
+    int cycles_per_frame = DEFAULT_CYCLES;
+    int palette = 0;
+    bool paused = false;
+    std::string status;
+};
+
 void audio_callback(void* userdata, uint8_t* stream, int len){
     static uint32_t sample_index = 0;
     int16_t* audio_buffer = (int16_t*) stream;
@@ -56,12 +85,12 @@ void audio_callback(void* userdata, uint8_t* stream, int len){
     }
 }
 
-void draw_graphics(SDL_Renderer* renderer, Chip8& chip8){
-    // Clear screen
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+void draw_graphics(SDL_Renderer* renderer, Chip8& chip8, const Palette& pal){
+    // Clear screen with palette background
+    SDL_SetRenderDrawColor(renderer, pal.bg[0], pal.bg[1], pal.bg[2], 255);
     SDL_RenderClear(renderer);
-    // Drawing white pixels
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    // Drawing lit pixels with palette foreground
+    SDL_SetRenderDrawColor(renderer, pal.fg[0], pal.fg[1], pal.fg[2], 255);
     for(int y=0; y<32; y++){
         for(int x=0; x<64; x++){
             if(chip8.display[x + (y*64)] == 1){
@@ -73,16 +102,57 @@ void draw_graphics(SDL_Renderer* renderer, Chip8& chip8){
     SDL_RenderPresent(renderer);
 }
 
-void handle_input(Chip8& chip8, bool& running){
+void update_title(SDL_Window* window, const App& app){
+    std::string t = "Chip-8 | " + std::to_string(app.cycles_per_frame) + " cyc/frame | " +
+                    PALETTES[app.palette].name;
+    if(app.paused) t += " | PAUSED";
+    if(!app.status.empty()) t += " | " + app.status;
+    SDL_SetWindowTitle(window, t.c_str());
+}
+
+void change_speed(App& app, int direction){
+    int step = (app.cycles_per_frame < 20) ? 1 : 10;
+    app.cycles_per_frame += direction * step;
+    if(app.cycles_per_frame < MIN_CYCLES) app.cycles_per_frame = MIN_CYCLES;
+    if(app.cycles_per_frame > MAX_CYCLES) app.cycles_per_frame = MAX_CYCLES;
+}
+
+void handle_input(Chip8& chip8, App& app, bool& running){
     SDL_Event event;
 
     while(SDL_PollEvent(&event)){
         if(event.type == SDL_QUIT) running = false;
         if(event.type == SDL_KEYDOWN){
-            if(event.key.keysym.sym == SDLK_ESCAPE) running = false;
+            SDL_Keycode k = event.key.keysym.sym;
+            if(k == SDLK_ESCAPE) running = false;
+            // Emulator controls
+            else if(k == SDLK_UP   || k == SDLK_EQUALS || k == SDLK_PLUS) { change_speed(app, +1); app.status.clear(); }
+            else if(k == SDLK_DOWN || k == SDLK_MINUS)                    { change_speed(app, -1); app.status.clear(); }
+            else if(k == SDLK_BACKSPACE)                                  { app.cycles_per_frame = DEFAULT_CYCLES; app.status.clear(); }
+            else if(k == SDLK_c || k == SDLK_TAB)                         { app.palette = (app.palette + 1) % NUM_PALETTES; chip8.draw_flag = true; app.status.clear(); }
+            else if(k == SDLK_SPACE || k == SDLK_p)                       { app.paused = !app.paused; }
+            else if(k == SDLK_F5){
+                if(chip8.save_state(SAVE_FILE)){
+                    app.status = "State saved";
+                    std::cout << "Savestate saved to " << SAVE_FILE << std::endl;
+                } else {
+                    app.status = "Save FAILED";
+                    std::cerr << "Failed to save state to " << SAVE_FILE << std::endl;
+                }
+            }
+            else if(k == SDLK_F9){
+                if(chip8.load_state(SAVE_FILE)){
+                    app.status = "State loaded";
+                    std::cout << "Savestate loaded from " << SAVE_FILE << std::endl;
+                } else {
+                    app.status = "Load FAILED";
+                    std::cerr << "Failed to load state from " << SAVE_FILE << " (corrupt/missing/wrong version)" << std::endl;
+                }
+            }
+
             // Check which Chip-8 key was pressed
             for(int i=0; i<16; i++){
-                if(event.key.keysym.sym == keymap[i]) chip8.key[i] = 1;
+                if(k == keymap[i]) chip8.key[i] = 1;
             }
         }
         if(event.type == SDL_KEYUP){
@@ -171,6 +241,7 @@ int main(int argc, char** argv){
         return 1;
     }
     SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    if(!renderer) renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
     if(!renderer){
         std::cerr << "Renderer error: " << SDL_GetError() << std::endl;
         SDL_DestroyWindow(window);
@@ -186,19 +257,23 @@ int main(int argc, char** argv){
         return 1;
     }
     
+    App app;
     const Uint32 FRAME_MS = 1000 / 60;
     bool running = true;
     while(running){
         Uint32 frame_start = SDL_GetTicks();
 
-        handle_input(chip8, running);
-        for(int i=0; i<10; i++){
-            chip8.emulate_cycle();
+        handle_input(chip8, app, running);
+        if(!app.paused){
+            for(int i=0; i<app.cycles_per_frame; i++){
+                chip8.emulate_cycle();
+            }
+            chip8.update_timers(); // exactly once per frame => 60 Hz
         }
-        chip8.update_timers(); // exactly once per frame => 60 Hz
 
-        beeping = (chip8.get_sound_timer() > 0);
-        draw_graphics(renderer, chip8);
+        beeping = (!app.paused && chip8.get_sound_timer() > 0);
+        draw_graphics(renderer, chip8, PALETTES[app.palette]);
+        update_title(window, app);
 
         // Sleep only for what is left of this frame (delay is per FRAME, not per cycle)
         Uint32 elapsed = SDL_GetTicks() - frame_start;

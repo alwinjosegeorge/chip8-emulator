@@ -78,9 +78,25 @@ make
 ./chip8 roms/PONG.ch8
 ```
 
-## Keyboard Mapping
+## Controls
 
-The original Chip-8 keypad is mapped to keyboard keys:
+### Emulator Hotkeys
+
+| Key / Shortcut | Action | Description |
+| :--- | :--- | :--- |
+| `ESC` | Quit | Closes the emulator |
+| `Up` / `+` / `=` | Speed Up | Increases CPU cycles executed per frame |
+| `Down` / `-` | Speed Down | Decreases CPU cycles executed per frame |
+| `Backspace` | Reset Speed | Restores default emulation speed (10 cycles/frame) |
+| `C` / `Tab` | Cycle Palette | Cycles through Classic Green, Amber CRT, Neon, and Monochrome |
+| `Space` / `P` | Pause / Resume | Freezes/unfreezes CPU and timer execution |
+| `F5` | Quick Save | Saves emulator state to binary file `savestate.c8s` |
+| `F9` | Quick Load | Restores emulator state from `savestate.c8s` |
+
+### Hex Keypad Mapping
+
+The standard Chip-8 16-key keypad maps to the QWERTY keyboard:
+
 ```
 Chip-8 Keypad:          QWERTY Keyboard:
 ┌─┬─┬─┬─┐               ┌─┬─┬─┬─┐
@@ -94,10 +110,6 @@ Chip-8 Keypad:          QWERTY Keyboard:
 └─┴─┴─┴─┘               └─┴─┴─┴─┘
 ```
 
-**Controls:**
-- `ESC` - Quit emulator
-- Keyboard keys as mapped above
-
 ### Game-Specific Controls
 
 **PONG:**
@@ -109,6 +121,18 @@ Chip-8 Keypad:          QWERTY Keyboard:
 - `W` - Drop
 - `E` - Move right
 - `A` - Move left
+
+## Testing & Headless Mode
+
+Run headless tests without launching SDL:
+```bash
+./chip8 roms/tests/1-chip8-logo.ch8 --headless --cycles 1000 --dump-screen
+```
+
+Run the automated CPU core unit test suite:
+```bash
+make test
+```
 
 ## Implementation Details
 

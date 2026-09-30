@@ -12,7 +12,12 @@ $(TARGET): $(OBJECTS)
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-clean:
-	rm -f $(OBJECTS) $(TARGET)
+# Headless CPU-core tests (no SDL needed)
+test: tests/test_core.cpp src/chip8.cpp
+	$(CXX) -std=c++17 -Wall -Wextra -O2 -o run_tests tests/test_core.cpp src/chip8.cpp
+	./run_tests
 
-.PHONY: all clean
+clean:
+	rm -f $(OBJECTS) $(TARGET) run_tests run_tests.exe
+
+.PHONY: all clean test

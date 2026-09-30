@@ -326,3 +326,60 @@ void Chip8::update_timers(){
     if(delay_timer > 0) delay_timer--;
     if(sound_timer > 0) sound_timer--;
 }
+
+// ---------------- Savestates ----------------
+// File layout: magic "CH8S" | u32 version | memory | V | I | PC | SP | stack | timers | display | key
+static const char STATE_MAGIC[4] = {'C','H','8','S'};
+static const uint32_t STATE_VERSION = 1;
+
+template<typename T> static void put(std::ofstream& f, const T& v){ f.write((const char*)&v, sizeof(T)); }
+template<typename T> static bool get(std::ifstream& f, T& v){ f.read((char*)&v, sizeof(T)); return (bool)f; }
+
+bool Chip8::save_state(const std::string& filename) const {
+    std::ofstream f(filename, std::ios::binary | std::ios::trunc);
+    if(!f.is_open()) return false;
+    f.write(STATE_MAGIC, 4);
+    put(f, STATE_VERSION);
+    f.write((const char*)memory, sizeof(memory));
+    f.write((const char*)v, sizeof(v));
+    put(f, index); put(f, pc); put(f, sp);
+    f.write((const char*)stack, sizeof(stack));
+    put(f, delay_timer); put(f, sound_timer);
+    f.write((const char*)display, sizeof(display));
+    f.write((const char*)key, sizeof(key));
+    return (bool)f;
+}
+
+bool Chip8::load_state(const std::string& filename){
+    std::ifstream f(filename, std::ios::binary);
+    if(!f.is_open()) return false;
+
+    char magic[4]; uint32_t version = 0;
+    f.read(magic, 4);
+    if(!f || std::memcmp(magic, STATE_MAGIC, 4) != 0) return false;
+    if(!get(f, version) || version != STATE_VERSION) return false;
+
+    // Read into temporaries first so a truncated/corrupt file can never corrupt live state.
+    uint8_t  n_mem[4096], n_v[16], n_disp[64*32], n_key[16];
+    uint16_t n_stack[16], n_index, n_pc;
+    uint8_t  n_sp, n_dt, n_st;
+    f.read((char*)n_mem, sizeof(n_mem));
+    f.read((char*)n_v, sizeof(n_v));
+    if(!get(f, n_index) || !get(f, n_pc) || !get(f, n_sp)) return false;
+    f.read((char*)n_stack, sizeof(n_stack));
+    if(!get(f, n_dt) || !get(f, n_st)) return false;
+    f.read((char*)n_disp, sizeof(n_disp));
+    f.read((char*)n_key, sizeof(n_key));
+    if(!f) return false;
+    if(n_sp > 16 || n_pc >= 4096 || n_index >= 4096) return false; // validation check
+
+    std::memcpy(memory, n_mem, sizeof(memory));
+    std::memcpy(v, n_v, sizeof(v));
+    std::memcpy(stack, n_stack, sizeof(stack));
+    std::memcpy(display, n_disp, sizeof(display));
+    std::memcpy(key, n_key, sizeof(key));
+    index = n_index; pc = n_pc; sp = n_sp;
+    delay_timer = n_dt; sound_timer = n_st;
+    draw_flag = true;
+    return true;
+}
