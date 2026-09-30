@@ -117,9 +117,14 @@ void AppContext::scan_roms(const std::string& root_dir) {
         else return;
     }
 
+    std::set<std::string> seen_filenames;
     try {
         for (const auto& entry : std::filesystem::recursive_directory_iterator(dir_to_search)) {
             if (entry.is_regular_file() && entry.path().extension() == ".ch8") {
+                std::string fname = entry.path().filename().string();
+                if (seen_filenames.count(fname)) continue;
+                seen_filenames.insert(fname);
+
                 RomItem item;
                 item.path = entry.path().lexically_normal().string();
                 // Normalize slashes to forward slashes for cross-platform consistency

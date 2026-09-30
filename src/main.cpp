@@ -39,38 +39,6 @@ static std::string get_save_filename(int slot) {
     return "savestate_slot" + std::to_string(slot) + ".c8s";
 }
 
-static void apply_game_key(Chip8& chip8, AppContext& ctx, SDL_Keycode k, uint8_t state) {
-    for (int i = 0; i < 16; i++) {
-        if (k == KEYMAP[i]) chip8.key[i] = state;
-    }
-
-    RomItem* cur = ctx.get_selected_rom();
-    std::string lower = cur ? cur->title : "";
-    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-
-    if (lower.find("pong") != std::string::npos) {
-        if (k == SDLK_w) chip8.key[1] = state;
-        if (k == SDLK_s) chip8.key[4] = state;
-        if (k == SDLK_UP) chip8.key[12] = state;
-        if (k == SDLK_DOWN) chip8.key[13] = state;
-    } else if (lower.find("tetris") != std::string::npos) {
-        if (k == SDLK_a || k == SDLK_LEFT) chip8.key[4] = state;
-        if (k == SDLK_d || k == SDLK_RIGHT) chip8.key[6] = state;
-        if (k == SDLK_w || k == SDLK_UP) chip8.key[5] = state;
-        if (k == SDLK_s || k == SDLK_DOWN) chip8.key[7] = state;
-    } else if (lower.find("blinky") != std::string::npos) {
-        if (k == SDLK_w || k == SDLK_UP) chip8.key[3] = state;
-        if (k == SDLK_s || k == SDLK_DOWN) chip8.key[6] = state;
-        if (k == SDLK_a || k == SDLK_LEFT) chip8.key[7] = state;
-        if (k == SDLK_d || k == SDLK_RIGHT) chip8.key[8] = state;
-    } else {
-        if (k == SDLK_w || k == SDLK_UP) chip8.key[5] = state;
-        if (k == SDLK_s || k == SDLK_DOWN) chip8.key[8] = state;
-        if (k == SDLK_a || k == SDLK_LEFT) chip8.key[7] = state;
-        if (k == SDLK_d || k == SDLK_RIGHT) chip8.key[9] = state;
-    }
-}
-
 static void audio_callback(void* userdata, uint8_t* stream, int len) {
     static uint32_t sample_index = 0;
     int16_t* audio_buffer = (int16_t*)stream;
@@ -184,11 +152,22 @@ static void dump_screen(const Chip8& chip8) {
     std::cout << std::flush;
 }
 
+static void capture_screenshot(SDL_Renderer* renderer, int w, int h, const std::string& path) {
+    SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormat(0, w, h, 32, SDL_PIXELFORMAT_ARGB8888);
+    if (surface) {
+        SDL_RenderReadPixels(renderer, NULL, SDL_PIXELFORMAT_ARGB8888, surface->pixels, surface->pitch);
+        SDL_SaveBMP(surface, path.c_str());
+        SDL_FreeSurface(surface);
+        std::cout << "[Screenshot] Captured: " << path << std::endl;
+    }
+}
+
 int main(int argc, char** argv) {
     bool headless = false;
     bool dump = false;
     bool disasm_mode = false;
     bool demo_mode = false;
+    bool screenshot_all = false;
     int cycles = 1000;
     std::string cli_rom_path = "";
 
@@ -203,6 +182,8 @@ int main(int argc, char** argv) {
             disasm_mode = true;
         } else if (arg == "--demo") {
             demo_mode = true;
+        } else if (arg == "--screenshot-all") {
+            screenshot_all = true;
         } else if (arg == "--cycles" && i + 1 < argc) {
             cycles = std::stoi(argv[++i]);
         } else if (arg.rfind("--", 0) != 0) {
@@ -287,6 +268,78 @@ int main(int argc, char** argv) {
 
     Chip8 chip8;
     UiRenderer ui_renderer;
+
+    if (screenshot_all) {
+        // 1. Launcher view
+        ctx.screen = ScreenMode::LAUNCHER;
+        ui_renderer.render(renderer, ctx, chip8, WIN_WIDTH, WIN_HEIGHT);
+        capture_screenshot(renderer, WIN_WIDTH, WIN_HEIGHT, "assets/screenshots/launcher.bmp");
+
+        // 2. Settings modal view
+        ctx.show_settings_modal = true;
+        ui_renderer.render(renderer, ctx, chip8, WIN_WIDTH, WIN_HEIGHT);
+        capture_screenshot(renderer, WIN_WIDTH, WIN_HEIGHT, "assets/screenshots/settings.bmp");
+        ctx.show_settings_modal = false;
+
+        // 3. Pong gameplay view
+        chip8.reset();
+        std::string pong_path = "roms/Pong.ch8";
+        if (!std::filesystem::exists(pong_path)) pong_path = "roms/games/Pong.ch8";
+        chip8.load_rom(pong_path);
+        ctx.screen = ScreenMode::GAMEPLAY;
+        for (size_t i = 0; i < ctx.roms.size(); i++) {
+            if (ctx.roms[i].title == "Pong") { ctx.selected_rom_index = (int)i; break; }
+        }
+        for (int f = 0; f < 80; f++) {
+            for (int c = 0; c < 20; c++) chip8.emulate_cycle();
+            chip8.update_timers();
+        }
+        ui_renderer.render(renderer, ctx, chip8, WIN_WIDTH, WIN_HEIGHT);
+        capture_screenshot(renderer, WIN_WIDTH, WIN_HEIGHT, "assets/screenshots/gameplay-pong.bmp");
+
+        // 4. Savestate notification view
+        chip8.save_state("savestate_slot1.c8s");
+        ctx.show_toast("State saved to Slot 1", 50, 255, 150);
+        ui_renderer.render(renderer, ctx, chip8, WIN_WIDTH, WIN_HEIGHT);
+        capture_screenshot(renderer, WIN_WIDTH, WIN_HEIGHT, "assets/screenshots/savestate.bmp");
+
+        // 5. Debugger panel view
+        ctx.show_debugger = true;
+        ctx.paused = true;
+        ui_renderer.render(renderer, ctx, chip8, WIN_WIDTH, WIN_HEIGHT);
+        capture_screenshot(renderer, WIN_WIDTH, WIN_HEIGHT, "assets/screenshots/debugger.bmp");
+        ctx.show_debugger = false;
+        ctx.paused = false;
+
+        // 6. Themes (Amber CRT) view
+        ctx.config.palette = 1; // Amber CRT
+        ctx.show_toast("Theme: Amber CRT", 255, 176, 0);
+        ui_renderer.render(renderer, ctx, chip8, WIN_WIDTH, WIN_HEIGHT);
+        capture_screenshot(renderer, WIN_WIDTH, WIN_HEIGHT, "assets/screenshots/themes.bmp");
+
+        // 7. Tetris gameplay view (Neon Cyberpunk)
+        chip8.reset();
+        std::string tetris_path = "roms/Tetris.ch8";
+        if (!std::filesystem::exists(tetris_path)) tetris_path = "roms/games/Tetris.ch8";
+        chip8.load_rom(tetris_path);
+        ctx.config.palette = 2; // Neon Cyberpunk
+        for (size_t i = 0; i < ctx.roms.size(); i++) {
+            if (ctx.roms[i].title == "Tetris") { ctx.selected_rom_index = (int)i; break; }
+        }
+        for (int f = 0; f < 100; f++) {
+            for (int c = 0; c < 15; c++) chip8.emulate_cycle();
+            chip8.update_timers();
+        }
+        ctx.show_toast("Theme: Neon Cyberpunk", 0, 255, 240);
+        ui_renderer.render(renderer, ctx, chip8, WIN_WIDTH, WIN_HEIGHT);
+        capture_screenshot(renderer, WIN_WIDTH, WIN_HEIGHT, "assets/screenshots/gameplay-tetris.bmp");
+
+        std::cout << "All screenshots captured successfully." << std::endl;
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 0;
+    }
 
     // Direct ROM launch from command line
     if (!cli_rom_path.empty()) {
@@ -471,7 +524,7 @@ int main(int argc, char** argv) {
                 }
 
                 // Global Shortcuts
-                if (k == SDLK_ESCAPE || (k == SDLK_m && ctx.screen == ScreenMode::GAMEPLAY)) {
+                if (k == SDLK_ESCAPE) {
                     if (ctx.show_settings_modal) ctx.show_settings_modal = false;
                     else if (ctx.show_keypad_modal) ctx.show_keypad_modal = false;
                     else if (ctx.screen == ScreenMode::GAMEPLAY) {
@@ -479,49 +532,6 @@ int main(int argc, char** argv) {
                         ctx.show_debugger = false;
                     } else {
                         running = false;
-                    }
-                } else if (ctx.screen == ScreenMode::LAUNCHER && !ctx.search_focused && (k >= SDLK_1 && k <= SDLK_9)) {
-                    int idx = k - SDLK_1;
-                    if (idx < (int)ctx.filtered_indices.size()) {
-                        int r_idx = ctx.filtered_indices[idx];
-                        ctx.selected_rom_index = r_idx;
-                        const auto& rom = ctx.roms[r_idx];
-                        chip8.reset();
-                        if (chip8.load_rom(rom.path)) {
-                            ctx.screen = ScreenMode::GAMEPLAY;
-                            ctx.paused = false;
-                            ctx.record_played(r_idx);
-                            ctx.show_toast("Launching " + rom.title, 0, 255, 200);
-                        }
-                    }
-                } else if (ctx.screen == ScreenMode::LAUNCHER && !ctx.search_focused && (k == SDLK_UP || k == SDLK_w)) {
-                    if (!ctx.filtered_indices.empty()) {
-                        auto it = std::find(ctx.filtered_indices.begin(), ctx.filtered_indices.end(), ctx.selected_rom_index);
-                        if (it != ctx.filtered_indices.end() && it != ctx.filtered_indices.begin()) {
-                            ctx.selected_rom_index = *(it - 1);
-                        } else {
-                            ctx.selected_rom_index = ctx.filtered_indices.front();
-                        }
-                    }
-                } else if (ctx.screen == ScreenMode::LAUNCHER && !ctx.search_focused && (k == SDLK_DOWN || k == SDLK_s)) {
-                    if (!ctx.filtered_indices.empty()) {
-                        auto it = std::find(ctx.filtered_indices.begin(), ctx.filtered_indices.end(), ctx.selected_rom_index);
-                        if (it != ctx.filtered_indices.end() && (it + 1) != ctx.filtered_indices.end()) {
-                            ctx.selected_rom_index = *(it + 1);
-                        } else {
-                            ctx.selected_rom_index = ctx.filtered_indices.front();
-                        }
-                    }
-                } else if (ctx.screen == ScreenMode::LAUNCHER && !ctx.search_focused && (k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_SPACE)) {
-                    if (ctx.selected_rom_index >= 0 && ctx.selected_rom_index < (int)ctx.roms.size()) {
-                        const auto& rom = ctx.roms[ctx.selected_rom_index];
-                        chip8.reset();
-                        if (chip8.load_rom(rom.path)) {
-                            ctx.screen = ScreenMode::GAMEPLAY;
-                            ctx.paused = false;
-                            ctx.record_played(ctx.selected_rom_index);
-                            ctx.show_toast("Launching " + rom.title, 0, 255, 200);
-                        }
                     }
                 } else if (k == SDLK_TAB || k == SDLK_c) {
                     ctx.config.palette = (ctx.config.palette + 1) % NUM_PALETTES;
@@ -585,11 +595,15 @@ int main(int argc, char** argv) {
 
                 // Forward active keys to CHIP-8 keypad during gameplay
                 if (ctx.screen == ScreenMode::GAMEPLAY && !ctx.show_settings_modal && !ctx.show_keypad_modal) {
-                    apply_game_key(chip8, ctx, k, 1);
+                    for (int i = 0; i < 16; i++) {
+                        if (k == KEYMAP[i]) chip8.key[i] = 1;
+                    }
                 }
             } else if (event.type == SDL_KEYUP) {
                 if (ctx.screen == ScreenMode::GAMEPLAY) {
-                    apply_game_key(chip8, ctx, event.key.keysym.sym, 0);
+                    for (int i = 0; i < 16; i++) {
+                        if (event.key.keysym.sym == KEYMAP[i]) chip8.key[i] = 0;
+                    }
                 }
             }
         }
@@ -607,6 +621,7 @@ int main(int argc, char** argv) {
 
         // Render Frame
         ui_renderer.render(renderer, ctx, chip8, WIN_WIDTH, WIN_HEIGHT);
+        SDL_RenderPresent(renderer);
 
         // Frame rate limiter (60 FPS)
         Uint32 elapsed = SDL_GetTicks() - frame_start;

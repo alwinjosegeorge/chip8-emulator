@@ -1,8 +1,24 @@
-.vscode/
+# Build artifacts
 *.o
 *.d
 *.exe
 chip8
 run_tests
+
+# Savestates & runtime configuration
 *.c8s
 chip8_config.ini
+
+# Temporary image captures
+*.bmp
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Operating System files
+.DS_Store
+Thumbs.db
+desktop.ini

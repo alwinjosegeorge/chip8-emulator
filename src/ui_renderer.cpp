@@ -769,7 +769,6 @@ void UiRenderer::render(SDL_Renderer* renderer, AppContext& ctx, Chip8& chip8, i
     }
 
     render_toast(renderer, ctx.toast, win_w);
-    SDL_RenderPresent(renderer);
 }
 
 void UiRenderer::handle_mouse_move(AppContext& ctx, int mx, int my, int win_w, int win_h) {
