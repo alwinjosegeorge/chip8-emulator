@@ -93,11 +93,57 @@ void handle_input(Chip8& chip8, bool& running){
     }
 }
 
+void dump_screen(const Chip8& chip8){
+    for(int y=0; y<32; y++){
+        for(int x=0; x<64; x++){
+            std::cout << (chip8.display[x + y*64] ? '#' : '.');
+        }
+        std::cout << "\n";
+    }
+    std::cout << std::flush;
+}
+
 int main(int argc, char** argv){
-    if(argc < 2){
-        std::cerr << "Usage: " << argv[0] << " <ROM file>" << std::endl;
+    bool headless = false;
+    bool dump = false;
+    int cycles = 1000;
+    std::string rom_path = "";
+
+    for(int i=1; i<argc; i++){
+        std::string arg = argv[i];
+        if(arg == "--headless"){
+            headless = true;
+        } else if(arg == "--dump-screen"){
+            dump = true;
+        } else if(arg == "--cycles" && i+1 < argc){
+            cycles = std::stoi(argv[++i]);
+        } else if(arg.rfind("--", 0) != 0){
+            rom_path = arg;
+        }
+    }
+
+    if(rom_path.empty()){
+        std::cerr << "Usage: " << argv[0] << " <ROM file> [--headless] [--cycles N] [--dump-screen]" << std::endl;
         return 1;
     }
+
+    if(headless){
+        Chip8 chip8;
+        if(!chip8.load_rom(rom_path)){
+            return 1;
+        }
+        for(int i=0; i<cycles; i++){
+            chip8.emulate_cycle();
+            if(i % 10 == 0){
+                chip8.update_timers();
+            }
+        }
+        if(dump){
+            dump_screen(chip8);
+        }
+        return 0;
+    }
+
     SDL_SetMainReady();
     if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0){
         std::cerr << "SDL Error: " << SDL_GetError() << std::endl;
@@ -133,7 +179,7 @@ int main(int argc, char** argv){
     }
 
     Chip8 chip8;
-    if(!chip8.load_rom(argv[1])){
+    if(!chip8.load_rom(rom_path)){
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
         SDL_Quit();
